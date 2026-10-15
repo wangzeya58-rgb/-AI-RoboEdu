@@ -1,379 +1,264 @@
-# projects
+## 一、环境准备
 
-这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目，由扣子编程 CLI 创建。
+请安装：
 
-## 快速开始
+- Git
+- Node.js 24.x
+- pnpm 9.0.0
+- PostgreSQL 16，或 Docker 数据库环境
 
-### 启动开发服务器
+各系统说明：
 
-```bash
-coze dev
-```
+| 系统 | 说明 |
+|---|---|
+| Windows | 使用 PowerShell；容器数据库可使用 Docker Desktop |
+| macOS Intel | 使用 Terminal；Node.js 选择 x64，Docker Desktop 选择 Intel 版本 |
+| Ubuntu | 使用 bash / zsh；容器数据库安装 Docker Engine 和 Compose 插件 |
 
-启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
+已安装 Corepack 时执行：
 
-开发服务器支持热更新，修改代码后页面会自动刷新。
+corepack enable
+corepack prepare pnpm@9.0.0 --activate
 
-### 构建生产版本
+如果没有 Corepack，请参考 pnpm 安装说明。
 
-```bash
-coze build
-```
+检查环境：
 
-### 启动生产服务器
+node --version
+pnpm --version
+git --version
 
-```bash
-coze start
-```
+本项目使用 pnpm 管理依赖，不使用 npm 或 yarn。
 
-### 生产部署（阿里云 CentOS ECS）
+## 二、下载项目
 
-完整分步指南：[`docs/DEPLOY.md`](./docs/DEPLOY.md)，含 Nginx 反代配置、systemd 服务、一键上传脚本与排查方法。
+三种系统均可执行：
 
-```bash
-# 1) 服务器一次性初始化
-sudo bash deploy/scripts/server-init.sh
+git clone https://github.com/wangzeya58-rgb/-AI-RoboEdu.git AI-RoboEdu
+cd AI-RoboEdu
+pnpm install --frozen-lockfile
 
-# 2) 本地一键部署
-export SERVER_HOST=8.134.xx.xx
-bash deploy/scripts/deploy.sh
+后续命令均在项目根目录执行。
 
-# 3) 服务器自检
-bash deploy/scripts/check.sh
-```
+不要跨操作系统复制 node_modules，应重新安装依赖。
 
-## 项目结构
+## 三、配置环境变量
 
-```
-src/
-├── app/                      # Next.js App Router 目录
-│   ├── layout.tsx           # 根布局组件
-│   ├── page.tsx             # 首页
-│   ├── globals.css          # 全局样式（包含 shadcn 主题变量）
-│   └── [route]/             # 其他路由页面
-├── components/              # React 组件目录
-│   └── ui/                  # shadcn/ui 基础组件（优先使用）
-│       ├── button.tsx
-│       ├── card.tsx
-│       └── ...
-├── lib/                     # 工具函数库
-│   └── utils.ts            # cn() 等工具函数
-└── hooks/                   # 自定义 React Hooks（可选）
+首次配置时，从示例创建 .env.local。已有配置不要覆盖。
 
-server/
-├── index.ts                 # 自定义服务器入口
-├── tsconfig.json           # Server TypeScript 配置
-└── dist/                    # 编译输出目录（自动生成）
-```
+Windows PowerShell：
 
-## 核心开发规范
+Copy-Item .env.example .env.local
 
-### 1. 组件开发
+macOS Intel / Ubuntu：
 
-**优先使用 shadcn/ui 基础组件**
+cp .env.example .env.local
 
-本项目已预装完整的 shadcn/ui 组件库，位于 `src/components/ui/` 目录。开发时应优先使用这些组件作为基础：
+编辑 .env.local：
 
-```tsx
-// ✅ 推荐：使用 shadcn 基础组件
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+DATABASE_URL=postgres://ai_roboedu_dev:REPLACE_WITH_DB_PASSWORD@127.0.0.1:5432/ai_roboedu_dev
 
-export default function MyComponent() {
-  return (
-    <Card>
-      <CardHeader>标题</CardHeader>
-      <CardContent>
-        <Input placeholder="输入内容" />
-        <Button>提交</Button>
-      </CardContent>
-    </Card>
-  );
-}
-```
+AUTH_SESSION_SECRET=REPLACE_WITH_A_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
 
-**可用的 shadcn 组件清单**
+ENABLE_DEMO_AUTH=true
+NEXT_PUBLIC_ENABLE_DEMO_AUTH=true
 
-- 表单：`button`, `input`, `textarea`, `select`, `checkbox`, `radio-group`, `switch`, `slider`
-- 布局：`card`, `separator`, `tabs`, `accordion`, `collapsible`, `scroll-area`
-- 反馈：`alert`, `alert-dialog`, `dialog`, `toast`, `sonner`, `progress`
-- 导航：`dropdown-menu`, `menubar`, `navigation-menu`, `context-menu`
-- 数据展示：`table`, `avatar`, `badge`, `hover-card`, `tooltip`, `popover`
-- 其他：`calendar`, `command`, `carousel`, `resizable`, `sidebar`
+AI_CLASSROOM_PROVIDER=local
 
-详见 `src/components/ui/` 目录下的具体组件实现。
+ROBOT_TOOL_BASE_URL=http://127.0.0.1:8000
 
-### 2. 路由开发
+BOOTSTRAP_ADMIN_USERNAME=admin.local
+BOOTSTRAP_ADMIN_PASSWORD=REPLACE_WITH_ADMIN_PASSWORD
+BOOTSTRAP_ADMIN_NAME=Local Admin
 
-Next.js 使用文件系统路由，在 `src/app/` 目录下创建文件夹即可添加路由：
+注意：
 
-```bash
-# 创建新路由 /about
-src/app/about/page.tsx
+- 替换所有占位值。
+- 会话密钥使用至少 32 个字符的独立随机值。
+- 管理员密码至少 8 个字符。
+- 数据库密码包含特殊字符时，连接 URL 中的密码需进行 URL 编码。
+- 不要提交 .env.local、真实密码或 API Key。
+- 执行迁移前检查终端是否存在指向其他数据库的同名环境变量。
 
-# 创建动态路由 /posts/[id]
-src/app/posts/[id]/page.tsx
+## 四、准备数据库
 
-# 创建路由组（不影响 URL）
-src/app/(marketing)/about/page.tsx
+### 方式 A：Docker Compose
 
-# 创建 API 路由
-src/app/api/users/route.ts
-```
+在项目根目录创建 .env.dev-db：
 
-**页面组件示例**
+AI_ROBOEDU_DEV_DB=ai_roboedu_dev
+AI_ROBOEDU_DEV_USER=ai_roboedu_dev
+AI_ROBOEDU_DEV_PASSWORD=REPLACE_WITH_DB_PASSWORD
+AI_ROBOEDU_DEV_DB_HOST=127.0.0.1
+AI_ROBOEDU_DEV_DB_PORT=5432
 
-```tsx
-// src/app/about/page.tsx
-import { Button } from '@/components/ui/button';
+数据库名、用户名、密码和端口必须与 .env.local 一致。
 
-export const metadata = {
-  title: '关于我们',
-  description: '关于页面描述',
-};
+启动 Docker 后执行：
 
-export default function AboutPage() {
-  return (
-    <div>
-      <h1>关于我们</h1>
-      <Button>了解更多</Button>
-    </div>
-  );
-}
-```
+docker compose --env-file .env.dev-db -f compose.dev-db.yml up -d
+docker compose --env-file .env.dev-db -f compose.dev-db.yml ps
 
-**动态路由示例**
+等待数据库状态为 healthy。
 
-```tsx
-// src/app/posts/[id]/page.tsx
-export default async function PostPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+查看日志：
 
-  return <div>文章 ID: {id}</div>;
-}
-```
+docker compose --env-file .env.dev-db -f compose.dev-db.yml logs --tail 50 postgres
 
-**API 路由示例**
+数据保存在命名卷中。已有数据卷时，修改配置文件不会自动修改数据库密码。不要随意删除数据卷。
 
-```tsx
-// src/app/api/users/route.ts
-import { NextResponse } from 'next/server';
-
-export async function GET() {
-  return NextResponse.json({ users: [] });
-}
-
-export async function POST(request: Request) {
-  const body = await request.json();
-  return NextResponse.json({ success: true });
-}
-```
+### 方式 B：本机 PostgreSQL
 
-### 3. 依赖管理
-
-**必须使用 pnpm 管理依赖**
-
-```bash
-# ✅ 安装依赖
-pnpm install
-
-# ✅ 添加新依赖
-pnpm add package-name
-
-# ✅ 添加开发依赖
-pnpm add -D package-name
-
-# ❌ 禁止使用 npm 或 yarn
-# npm install  # 错误！
-# yarn add     # 错误！
-```
-
-项目已配置 `preinstall` 脚本，使用其他包管理器会报错。
-
-### 4. 样式开发
-
-**使用 Tailwind CSS v4**
-
-本项目使用 Tailwind CSS v4 进行样式开发，并已配置 shadcn 主题变量。
-
-```tsx
-// 使用 Tailwind 类名
-<div className="flex items-center gap-4 p-4 rounded-lg bg-background">
-  <Button className="bg-primary text-primary-foreground">
-    主要按钮
-  </Button>
-</div>
-
-// 使用 cn() 工具函数合并类名
-import { cn } from '@/lib/utils';
-
-<div className={cn(
-  "base-class",
-  condition && "conditional-class",
-  className
-)}>
-  内容
-</div>
-```
-
-**主题变量**
-
-主题变量定义在 `src/app/globals.css` 中，支持亮色/暗色模式：
-
-- `--background`, `--foreground`
-- `--primary`, `--primary-foreground`
-- `--secondary`, `--secondary-foreground`
-- `--muted`, `--muted-foreground`
-- `--accent`, `--accent-foreground`
-- `--destructive`, `--destructive-foreground`
-- `--border`, `--input`, `--ring`
+也可使用本机 PostgreSQL 15 / 16。
 
-### 5. 表单开发
+创建专用用户和数据库，授予迁移所需权限，并将连接信息填写到 .env.local。
 
-推荐使用 `react-hook-form` + `zod` 进行表单开发：
+不要使用生产数据库进行本地开发或测试。
 
-```tsx
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+## 五、迁移数据库和初始化管理员
 
-const formSchema = z.object({
-  username: z.string().min(2, '用户名至少 2 个字符'),
-  email: z.string().email('请输入有效的邮箱'),
-});
+三种系统使用相同命令：
 
-export default function MyForm() {
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: { username: '', email: '' },
-  });
+node --env-file=.env.local node_modules/drizzle-kit/bin.cjs migrate
+node --env-file=.env.local node_modules/tsx/dist/cli.mjs scripts/seed-admin.ts
 
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
-    console.log(data);
-  };
+这里显式加载 .env.local，避免独立脚本遗漏环境配置。
 
-  return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Input {...form.register('username')} />
-      <Input {...form.register('email')} />
-      <Button type="submit">提交</Button>
-    </form>
-  );
-}
-```
+使用仓库已有迁移，不需要重新生成迁移或执行 db:push。
 
-### 6. 数据获取
+如果数据库中已有管理员，初始化脚本会拒绝重复创建，不会重置密码。
 
-**服务端组件（推荐）**
+## 六、启动网页
 
-```tsx
-// src/app/posts/page.tsx
-async function getPosts() {
-  const res = await fetch('https://api.example.com/posts', {
-    cache: 'no-store', // 或 'force-cache'
-  });
-  return res.json();
-}
+Windows、macOS Intel、Ubuntu 均执行：
 
-export default async function PostsPage() {
-  const posts = await getPosts();
+pnpm exec next dev --hostname 127.0.0.1 --port 5000
 
-  return (
-    <div>
-      {posts.map(post => (
-        <div key={post.id}>{post.title}</div>
-      ))}
-    </div>
-  );
-}
-```
+浏览器访问：
 
-**客户端组件**
+http://localhost:5000
 
-```tsx
-'use client';
+终端保持运行，按 Ctrl+C 停止。
 
-import { useEffect, useState } from 'react';
+如果端口被占用：
 
-export default function ClientComponent() {
-  const [data, setData] = useState(null);
+pnpm exec next dev --hostname 127.0.0.1 --port 5001
 
-  useEffect(() => {
-    fetch('/api/data')
-      .then(res => res.json())
-      .then(setData);
-  }, []);
+随后访问 http://localhost:5001。
 
-  return <div>{JSON.stringify(data)}</div>;
-}
-```
+> 本说明直接使用 Next.js CLI。仓库原有开发和部署脚本依赖 Bash，部分还使用 Linux 命令，不建议在 Windows PowerShell 中直接运行。
 
-## 常见开发场景
+## 七、登录与体验
 
-### 添加新页面
+### 正式账号
 
-1. 在 `src/app/` 下创建文件夹和 `page.tsx`
-2. 使用 shadcn 组件构建 UI
-3. 根据需要添加 `layout.tsx` 和 `loading.tsx`
+使用初始化时配置的管理员用户名和密码登录。
 
-### 创建业务组件
+正式流程包括：
 
-1. 在 `src/components/` 下创建组件文件（非 UI 组件）
-2. 优先组合使用 `src/components/ui/` 中的基础组件
-3. 使用 TypeScript 定义 Props 类型
+1. 准备教师和学生账号。
+2. 创建班级和课程。
+3. 教师编辑章节并发布课程。
+4. 学生查看授权课程。
+5. 学生主动标记章节完成，保存学习进度。
+6. 围绕当前章节向 AI 小老师提问。
 
-### 添加全局状态
+### Demo 账号
 
-推荐使用 React Context 或 Zustand：
+本地开启 Demo 后可使用：
 
-```tsx
-// src/lib/store.ts
-import { create } from 'zustand';
+| 角色 | 用户名 | 密码 |
+|---|---|---|
+| 学生 | student | 123456 |
+| 教师 | teacher | 123456 |
+| 管理员 | admin | 123456 |
 
-interface Store {
-  count: number;
-  increment: () => void;
-}
+Demo 与正式账号数据隔离，不能将 Demo 体验视为正式数据库验收。
 
-export const useStore = create<Store>((set) => ({
-  count: 0,
-  increment: () => set((state) => ({ count: state.count + 1 })),
-}));
-```
+对外部署时关闭 Demo 开关，不要开放演示账号。
 
-### 集成数据库
+## 八、配置 AI 小老师
 
-推荐使用 Prisma 或 Drizzle ORM，在 `src/lib/db.ts` 中配置。
+默认：
 
-## 技术栈
+AI_CLASSROOM_PROVIDER=local
 
-- **框架**: Next.js 16.1.1 (App Router)
-- **UI 组件**: shadcn/ui (基于 Radix UI)
-- **样式**: Tailwind CSS v4
-- **表单**: React Hook Form + Zod
-- **图标**: Lucide React
-- **字体**: Geist Sans & Geist Mono
-- **包管理器**: pnpm 9+
-- **TypeScript**: 5.x
+此模式无需真实模型 Key，但不代表已连接云端模型。
 
-## 参考文档
+接入兼容 Chat Completions 的服务时，配置：
 
-- [Next.js 官方文档](https://nextjs.org/docs)
-- [shadcn/ui 组件文档](https://ui.shadcn.com)
-- [Tailwind CSS 文档](https://tailwindcss.com/docs)
-- [React Hook Form](https://react-hook-form.com)
+AI_CLASSROOM_PROVIDER=openai-compatible
+AI_CLASSROOM_BASE_URL=https://YOUR_PROVIDER_HOST/v1
+AI_CLASSROOM_MODEL=YOUR_MODEL_NAME
+AI_CLASSROOM_API_KEY=YOUR_API_KEY
+AI_CLASSROOM_TIMEOUT_MS=30000
 
-## 重要提示
+使用服务商提供的实际地址和模型名称，修改后重启网页。
 
-1. **必须使用 pnpm** 作为包管理器
-2. **优先使用 shadcn/ui 组件** 而不是从零开发基础组件
-3. **遵循 Next.js App Router 规范**，正确区分服务端/客户端组件
-4. **使用 TypeScript** 进行类型安全开发
-5. **使用 `@/` 路径别名** 导入模块（已配置）
+API Key 仅保存在服务端环境变量中，不要添加 NEXT_PUBLIC_ 前缀，也不要写入前端源码。
+
+课程 AI 用于知识讲解、章节答疑和实验提示，不调用机器人动作工具。
+
+## 九、小车与仿真器
+
+- /car-control：实车控制平台。
+- /simulator：独立仿真器控制页面。
+- 小车 FastAPI 默认地址为 http://127.0.0.1:8000。
+- 页面保存的 FastAPI 地址与服务端 ROBOT_TOOL_BASE_URL 是不同配置项。
+- 浏览器与机器人不在同一电脑时，需要填写机器人主机的局域网地址。
+- 实车和仿真器使用独立控制接口与运动话题，不得混用。
+- Windows / macOS 能运行网页，不表示能直接运行现有 ROS Noetic 小车程序。
+- 未连接设备时出现视频、雷达不可用提示属于正常情况。
+
+课程学习和 AI 答疑不需要启动 ROS，也不需要发送任何运动指令。
+
+## 十、本地生产构建
+
+完成环境配置和数据库迁移后执行：
+
+pnpm exec next build --webpack
+pnpm exec tsup src/server.ts --format cjs --platform node --target node20 --outDir dist --no-splitting --no-minify
+
+Windows PowerShell：
+
+$env:COZE_PROJECT_ENV = "PROD"
+$env:PORT = "5000"
+$env:HOSTNAME = "127.0.0.1"
+node --env-file=.env.local dist/server.js
+
+macOS Intel / Ubuntu：
+
+COZE_PROJECT_ENV=PROD PORT=5000 HOSTNAME=127.0.0.1 node --env-file=.env.local dist/server.js
+
+访问 http://localhost:5000。
+
+本项目包含服务端和数据库功能，不是双击 HTML 即可运行的静态网站。
+
+对外部署前应关闭 Demo、替换密钥并配置 HTTPS。服务器部署资料见 docs/DEPLOY.md (./docs/DEPLOY.md)。
+
+## 十一、常见问题
+
+| 问题 | 处理方式 |
+|---|---|
+| 找不到 pnpm | 检查安装和 PATH，重新打开终端 |
+| PowerShell 阻止 pnpm.ps1 | 可使用 pnpm.cmd，不要关闭全局安全策略 |
+| 不认识 --env-file | 检查是否使用 Node.js 24.x |
+| Windows 找不到 bash 或 ss | 使用本文的 Next.js CLI 启动命令 |
+| 数据库连接失败 | 检查服务、端口、密码和环境文件 |
+| 5432 端口冲突 | 同步修改容器宿主机端口与 DATABASE_URL |
+| 数据表不存在 | 执行数据库迁移，确认连接同一数据库 |
+| 管理员已存在 | 使用已有账号，不要重复初始化或删除用户数据 |
+| AI 未连接真实模型 | 检查 provider、模型、地址及 Key，然后重启 |
+| 视频或雷达不可用 | 检查独立 FastAPI 服务和 ROS 传感器节点 |
+
+## 十二、项目结构
+
+src/app/                 页面和服务端 API
+src/components/          课程播放器、AI 小老师及 UI
+src/lib/                 认证、课程、班级、AI 和控制 API
+src/storage/database/    数据库连接与 schema
+src/server.ts            自定义 HTTP 服务入口
+drizzle/                 数据库迁移
+scripts/                 测试与部署脚本
+public/                  静态资源
+docs/                    接口及项目文档

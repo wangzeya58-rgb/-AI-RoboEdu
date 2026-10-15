@@ -1,0 +1,29 @@
+name: ai-roboedu-dev-db
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ai-roboedu-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AI_ROBOEDU_DEV_DB}
+      POSTGRES_USER: ${AI_ROBOEDU_DEV_USER}
+      POSTGRES_PASSWORD: ${AI_ROBOEDU_DEV_PASSWORD}
+    ports:
+      - "${AI_ROBOEDU_DEV_DB_HOST:-127.0.0.1}:${AI_ROBOEDU_DEV_DB_PORT:-5432}:5432"
+    volumes:
+      - ai_roboedu_postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  ai_roboedu_postgres_dev_data:
+    name: ai_roboedu_postgres_dev_data

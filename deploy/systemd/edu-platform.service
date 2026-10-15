@@ -1,0 +1,77 @@
+# =============================================================
+#  智能AI小车实训教育平台 - systemd 服务
+# =============================================================
+#  路径：/etc/systemd/system/edu-platform.service
+#
+#  使用：
+#    sudo cp deploy/systemd/edu-platform.service /etc/systemd/system/
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable edu-platform
+#    sudo systemctl start  edu-platform
+#    sudo systemctl status edu-platform
+# =============================================================
+
+[Unit]
+Description=Smart AI Car Training Platform (Next.js)
+Documentation=https://nextjs.org/docs
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+# ---------- 运行身份 ----------
+#  推荐：新建 www 用户并把项目 chown -R www:www，避免用 root 跑 Node
+User=www
+Group=www
+
+# ---------- 工作目录（后端项目根） ----------
+WorkingDirectory=/www/wwwroot/edu-platform/backend
+
+# ---------- 启动命令 ----------
+#  注意：DEPLOY_RUN_PORT 是沙箱注入的环境变量，部署到 ECS 时等价于
+#   直接写 PORT=5000（Next.js 16 启动脚本读 PORT）。
+#  这里显式导出 PORT=5000 保证 systemd 下端口可预期。
+Environment=NODE_ENV=production
+Environment=PORT=5000
+Environment=HOSTNAME=127.0.0.1
+#  Supabase / OSS 等密钥按需在此追加（推荐用 EnvironmentFile 引用 .env）
+# EnvironmentFile=/www/wwwroot/edu-platform/backend/.env.production
+
+#  pnpm 在 ECS 上需要先 corepack enable；这里走绝对路径
+ExecStart=/usr/bin/pnpm start
+
+# ---------- 进程管理 ----------
+#  异常退出自动重启（仅在完全启动后）
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=5
+
+#  启动超时（构建+迁移场景给宽）
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# ---------- 资源限制 ----------
+LimitNOFILE=65535
+LimitNPROC=65535
+
+# ---------- 优雅关停 ----------
+#  Node 收到 SIGTERM 后会等请求结束再退出
+KillMode=mixed
+KillSignal=SIGTERM
+FinalKillSignal=SIGKILL
+SuccessExitStatus=143
+
+# ---------- 日志（journalctl -u edu-platform -f） ----------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=edu-platform
+
+# ---------- 安全加固 ----------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/www/wwwroot/edu-platform/backend
+
+[Install]
+WantedBy=multi-user.target

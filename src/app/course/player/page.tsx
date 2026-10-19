@@ -1,14 +1,20 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useCurrentSession } from "@/lib/auth/use-current-session";
+import type { SessionInfo } from "@/lib/auth/client";
+import { isDemoSessionId } from "@/lib/classes/formal-class-api";
+import { subscribeClassStore } from "@/lib/classes/demo-class-store";
 import Layout from "@/components/Layout";
 import CoursePlayer from "@/components/course/CoursePlayer";
+import { FormalCourseReader } from "@/components/course/FormalCourseReader";
 import { findLessonById, getLessonById } from "@/lib/course/lessons";
 import type { CourseLesson, ResourceKind, ResourceScene } from "@/lib/course/types";
 import {
   getCourseAssetBlob,
-  listTeacherCourses,
+  listDemoReadableCourses,
+  subscribeDemoCourses,
   type CourseAsset,
   type TeacherCourse,
 } from "@/lib/course/teacher-course-store";
@@ -45,7 +51,7 @@ function getUnsupportedMessage(kind: ResourceKind): string {
   return "当前浏览器端暂不能可靠预览该格式。";
 }
 
-async function buildUploadedCourseLesson(course: TeacherCourse): Promise<{
+async function buildUploadedCourseLesson(course: TeacherCourse, session: SessionInfo): Promise<{
   lesson: CourseLesson;
   objectUrls: string[];
 }> {
@@ -53,10 +59,10 @@ async function buildUploadedCourseLesson(course: TeacherCourse): Promise<{
   const resources = [...course.resources].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
-  const scenes: ResourceScene[] = await Promise.all(
-    resources.map(async (resource, index) => {
+  const results = await Promise.allSettled(
+    resources.map(async (resource, index): Promise<ResourceScene> => {
       const kind = getResourceKind(resource);
-      const blob = await getCourseAssetBlob(resource.id);
+      const blob = await getCourseAssetBlob(resource.id, session);
       const canUseObjectUrl = blob && ["pdf", "image", "video"].includes(kind);
       const objectUrl = canUseObjectUrl ? URL.createObjectURL(blob) : undefined;
 
@@ -87,6 +93,12 @@ async function buildUploadedCourseLesson(course: TeacherCourse): Promise<{
       };
     })
   );
+
+  if (results.some((result) => result.status === "rejected")) {
+    objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    throw new Error("资源读取失败或课程权限已失效。");
+  }
+  const scenes = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 
   return {
     lesson: {
@@ -130,52 +142,77 @@ async function buildUploadedCourseLesson(course: TeacherCourse): Promise<{
 }
 
 function CoursePlayerPageContent() {
+  const { session, ready } = useCurrentSession();
+  const [revision, setRevision] = useState(0);
   const searchParams = useSearchParams();
   const courseId = searchParams.get("courseId") ?? undefined;
   const builtInLesson = courseId ? findLessonById(courseId) : getLessonById(undefined);
   const [uploadedLesson, setUploadedLesson] = useState<CourseLesson | null>(null);
   const [loadingUploadedCourse, setLoadingUploadedCourse] = useState(Boolean(courseId && !builtInLesson));
+  const loadedVersion = useRef("");
+  const activeUrls = useRef<string[]>([]);
+  useEffect(() => () => { activeUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+
+  useEffect(() => {
+    const refresh = () => setRevision((value) => value + 1);
+    const unsubscribeCourses = subscribeDemoCourses(refresh);
+    const unsubscribeClasses = subscribeClassStore(refresh);
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("al-session-change", refresh);
+    return () => { unsubscribeCourses(); unsubscribeClasses(); clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("al-session-change", refresh); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    let objectUrls: string[] = [];
-
-    if (!courseId || builtInLesson) {
-      setUploadedLesson(null);
+    const clear = () => {
+      setUploadedLesson(null); loadedVersion.current = "";
+      activeUrls.current.forEach((url) => URL.revokeObjectURL(url)); activeUrls.current = [];
+    };
+    if (!courseId || builtInLesson || !ready || !session || !isDemoSessionId(session.id)) {
+      clear();
       setLoadingUploadedCourse(false);
       return;
     }
 
-    setLoadingUploadedCourse(true);
-    listTeacherCourses()
+    if (!loadedVersion.current.startsWith(`${session.id}:${courseId}:`)) { clear(); setLoadingUploadedCourse(true); }
+    listDemoReadableCourses(session)
       .then((courses) => {
         if (cancelled) return;
         const uploadedCourse = courses.find((course) => course.id === courseId);
         if (!uploadedCourse) {
-          setUploadedLesson(null);
+          clear();
           return;
         }
+        const version = `${session.id}:${courseId}:${uploadedCourse.updatedAt}`;
+        if (version === loadedVersion.current) return;
 
-        return buildUploadedCourseLesson(uploadedCourse).then((result) => {
+        return buildUploadedCourseLesson(uploadedCourse, session).then((result) => {
           if (cancelled) {
             result.objectUrls.forEach((url) => URL.revokeObjectURL(url));
             return;
           }
-          objectUrls = result.objectUrls;
+          activeUrls.current.forEach((url) => URL.revokeObjectURL(url));
+          activeUrls.current = result.objectUrls;
+          loadedVersion.current = version;
           setUploadedLesson(result.lesson);
         });
       })
+      .catch(() => { if (!cancelled) clear(); })
       .finally(() => {
         if (!cancelled) setLoadingUploadedCourse(false);
       });
 
     return () => {
       cancelled = true;
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [builtInLesson, courseId]);
+  }, [builtInLesson, courseId, revision, session, ready]);
 
-  if (loadingUploadedCourse) {
+  if (ready && session && !isDemoSessionId(session.id) && courseId && !builtInLesson) {
+    return <FormalCourseReader key={`${session.id}:${courseId}`} courseId={courseId} preview={session.role !== "student"} />;
+  }
+
+  if (!ready || loadingUploadedCourse) {
     return <div className="p-6 text-sm text-gray-500">正在加载自建课程...</div>;
   }
 
@@ -185,7 +222,7 @@ function CoursePlayerPageContent() {
     return (
       <div className="p-6">
         <div className="rounded-lg border border-amber-100 bg-amber-50 p-5 text-sm text-amber-800">
-          没有找到该课程。请返回教学资源库重新选择课程。
+          课程不存在、尚未发布或你没有访问权限。请返回课程中心重新选择课程。
         </div>
       </div>
     );

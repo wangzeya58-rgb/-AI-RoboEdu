@@ -264,6 +264,8 @@ export const courses = pgTable("courses", {
 	coverUrl: varchar("cover_url", { length: 500 }),
 	teacherId: uuid("teacher_id").notNull(),
 	teacherName: varchar("teacher_name", { length: 128 }),
+	creatorRole: userRoleEnum("creator_role"),
+	publicationScope: varchar("publication_scope", { length: 20 }).default('legacy').notNull(),
 	status: varchar({ length: 20 }).default('draft').notNull(),
 	rejectReason: text("reject_reason"),
 	durationMinutes: integer("duration_minutes").default(0),

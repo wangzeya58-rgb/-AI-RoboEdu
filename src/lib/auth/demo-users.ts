@@ -59,11 +59,8 @@ export const DEMO_USERS: DemoUser[] = [
 ];
 
 export function isDemoAuthAllowed(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" ||
-    process.env.ENABLE_DEMO_AUTH === "true" ||
-    process.env.NEXT_PUBLIC_ENABLE_DEMO_AUTH === "true"
-  );
+  if (process.env.ENABLE_DEMO_AUTH !== undefined) return process.env.ENABLE_DEMO_AUTH === "true";
+  return process.env.NODE_ENV !== "production";
 }
 
 export function findDemoUser(username: string, password: string): DemoUser | null {

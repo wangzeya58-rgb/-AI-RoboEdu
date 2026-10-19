@@ -1,6 +1,7 @@
 'use client';
 
 import Layout from '@/components/Layout';
+import Link from 'next/link';
 import { Rocket, Lightbulb, FlaskConical, ChevronRight } from 'lucide-react';
 
 // 功能卡片组件
@@ -19,8 +20,8 @@ function FeatureCards() {
               <p className="text-sm text-gray-500 mb-4">
                 管理和查看您的训练数据集，支持多种格式导入，快速构建高质量数据集用于模型训练
               </p>
-              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
-                进入管理 <ChevronRight className="w-4 h-4" />
+              <button disabled className="text-sm text-gray-400 font-medium flex items-center gap-1 cursor-not-allowed">
+                进入管理（尚未开放） <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -37,8 +38,8 @@ function FeatureCards() {
               <p className="text-sm text-gray-500 mb-4">
                 创建和监控深度学习模型训练任务，实时查看训练进度、损失曲线与性能指标
               </p>
-              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
-                开始训练 <ChevronRight className="w-4 h-4" />
+              <button disabled className="text-sm text-gray-400 font-medium flex items-center gap-1 cursor-not-allowed">
+                开始训练（尚未开放） <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -55,8 +56,8 @@ function FeatureCards() {
               <p className="text-sm text-gray-500 mb-4">
                 存储和管理训练完成的模型，支持版本控制、模型对比与一键部署到小车设备
               </p>
-              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
-                查看模型 <ChevronRight className="w-4 h-4" />
+              <button disabled className="text-sm text-gray-400 font-medium flex items-center gap-1 cursor-not-allowed">
+                查看模型（尚未开放） <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -76,12 +77,12 @@ export default function TrainingPage() {
             欢迎开启AI智能小车深度学习之旅
           </h1>
           <div className="flex gap-3">
-            <button className="px-6 py-2 bg-[#2386FF] text-white rounded-lg hover:bg-blue-600 transition-colors">
+            <Link href="/help-center" className="px-6 py-2 bg-[#2386FF] text-white rounded-lg hover:bg-blue-600 transition-colors">
               查看指引
-            </button>
-            <button className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+            </Link>
+            <Link href="/help-center" className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
               帮助中心
-            </button>
+            </Link>
           </div>
         </div>
 

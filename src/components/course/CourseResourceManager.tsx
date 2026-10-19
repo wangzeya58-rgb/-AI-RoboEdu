@@ -1,8 +1,11 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import type { SessionInfo } from "@/lib/auth/client";
+import { DemoCoursePublication } from "./DemoCoursePublication";
+import { courseScopeLabel, courseStatusLabel } from "@/lib/courses/publication";
 import {
   BookOpen,
   CheckCircle2,
@@ -27,6 +30,7 @@ import {
   deleteCourseAsset,
   getCourseAssetBlob,
   listTeacherCourses,
+  subscribeDemoCourses,
   updateTeacherCourse,
   type CourseAsset,
   type CourseAssetType,
@@ -88,7 +92,7 @@ function detectAssetType(file: File): CourseAssetType | null {
   return (matchedEntry?.[0] as CourseAssetType | undefined) ?? null;
 }
 
-function AssetPreview({ asset }: { asset: CourseAsset }) {
+function AssetPreview({ asset, session }: { asset: CourseAsset; session: SessionInfo }) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,17 +104,17 @@ function AssetPreview({ asset }: { asset: CourseAsset }) {
       return undefined;
     }
 
-    getCourseAssetBlob(asset.id).then((blob) => {
+    getCourseAssetBlob(asset.id, session).then((blob) => {
       if (!active || !blob) return;
       objectUrl = URL.createObjectURL(blob);
       setUrl(objectUrl);
-    });
+    }).catch(() => setUrl(null));
 
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [asset.id, asset.type]);
+  }, [asset.id, asset.type, session]);
 
   if (asset.type === "image") {
     return (
@@ -148,7 +152,7 @@ function AssetPreview({ asset }: { asset: CourseAsset }) {
   );
 }
 
-export function CourseResourceManager() {
+export function CourseResourceManager({ session }: { session: SessionInfo }) {
   const searchParams = useSearchParams();
   const routeCourseId = searchParams.get("courseId");
   const [courses, setCourses] = useState<TeacherCourse[]>([]);
@@ -166,6 +170,10 @@ export function CourseResourceManager() {
     text: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const creatingRef = useRef(false);
+  const refreshSequence = useRef(0);
+  const selectedIdRef = useRef(selectedCourseId);
+  selectedIdRef.current = selectedCourseId;
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
@@ -182,26 +190,24 @@ export function CourseResourceManager() {
     );
   }, [courses, keyword]);
 
-  async function refreshCourses(nextSelectedId?: string) {
-    const rows = await listTeacherCourses();
+  const refreshCourses = useCallback(async (nextSelectedId?: string) => {
+    if (nextSelectedId) { selectedIdRef.current = nextSelectedId; setSelectedCourseId(nextSelectedId); }
+    const sequence = ++refreshSequence.current;
+    const rows = await listTeacherCourses(session);
+    if (sequence !== refreshSequence.current) return;
     setCourses(rows);
-    const availableSelected = nextSelectedId ?? selectedCourseId ?? routeCourseId;
+    const availableSelected = nextSelectedId ?? selectedIdRef.current ?? routeCourseId;
     setSelectedCourseId(
       availableSelected && rows.some((course) => course.id === availableSelected)
         ? availableSelected
         : null
     );
-  }
+  }, [session, routeCourseId]);
 
   useEffect(() => {
     let cancelled = false;
 
-    listTeacherCourses()
-      .then((rows) => {
-        if (cancelled) return;
-        setCourses(rows);
-        setSelectedCourseId(rows.some((course) => course.id === routeCourseId) ? routeCourseId : null);
-      })
+    const reload = () => { void refreshCourses()
       .catch(() => {
         if (!cancelled) {
           setStatusMessage({
@@ -212,34 +218,44 @@ export function CourseResourceManager() {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
-      });
+      }); };
+    reload();
+    const unsubscribe = subscribeDemoCourses(reload);
+    window.addEventListener("focus", reload);
+    const invalidate = () => { ++refreshSequence.current; };
 
     return () => {
       cancelled = true;
+      invalidate();
+      unsubscribe();
+      window.removeEventListener("focus", reload);
     };
-  }, [routeCourseId]);
+  }, [refreshCourses]);
 
   useEffect(() => {
     setTitle(selectedCourse?.title ?? "");
     setDescription(selectedCourse?.description ?? "");
-  }, [selectedCourse]);
+  }, [selectedCourse?.id, selectedCourse?.title, selectedCourse?.description]);
 
   async function handleCreateCourse() {
+    if (creatingRef.current || saving || uploading) return;
+    creatingRef.current = true;
+    setSaving(true);
     setStatusMessage({ type: "info", text: "正在创建课程..." });
     try {
       const course = await createTeacherCourse({
         title: `新建课程 ${courses.length + 1}`,
         description: "用于学校现场演示的教师自建课程，可上传教学课件和课程资源。",
-      });
+      }, session);
       await refreshCourses(course.id);
       setStatusMessage({ type: "success", text: "课程已创建，可以继续编辑名称、简介并上传资源。" });
     } catch {
       setStatusMessage({ type: "error", text: "创建课程失败，请稍后重试。" });
-    }
+    } finally { creatingRef.current = false; setSaving(false); }
   }
 
   async function handleSaveCourse() {
-    if (!selectedCourse) return;
+    if (!selectedCourse || saving) return;
     if (!title.trim()) {
       setStatusMessage({ type: "error", text: "请先填写课程名称。" });
       return;
@@ -252,7 +268,7 @@ export function CourseResourceManager() {
         id: selectedCourse.id,
         title,
         description,
-      });
+      }, session);
       await refreshCourses(selectedCourse.id);
       setStatusMessage({ type: "success", text: "课程名称和简介已保存。" });
     } catch {
@@ -263,6 +279,10 @@ export function CourseResourceManager() {
   }
 
   function openUploadDialog() {
+    if (selectedCourse && (!selectedCourse.creatorId || !selectedCourse.creatorRole)) {
+      setStatusMessage({ type: "error", text: "请先由管理员确认旧课程的实际创建者，再上传文件或发布。" });
+      return;
+    }
     if (!selectedCourse && !newUploadCourseTitle.trim()) {
       setStatusMessage({ type: "error", text: "请先填写新课程名称。" });
       return;
@@ -296,7 +316,7 @@ export function CourseResourceManager() {
         const course = await createTeacherCourse({
           title: newUploadCourseTitle.trim(),
           description: newUploadCourseDescription.trim(),
-        });
+        }, session);
         targetCourseId = course.id;
       }
 
@@ -308,14 +328,14 @@ export function CourseResourceManager() {
         courseId: targetCourseId,
         type: assetType,
         file,
-      });
+      }, session);
       await refreshCourses(targetCourseId);
       setNewUploadCourseTitle("");
       setNewUploadCourseDescription("");
       window.dispatchEvent(new Event("course-assets-updated"));
       setStatusMessage({ type: "success", text: `${file.name} 上传成功，刷新页面后仍会保留。` });
-    } catch {
-      setStatusMessage({ type: "error", text: "上传失败，可能是浏览器存储空间不足。" });
+    } catch (error) {
+      setStatusMessage({ type: "error", text: error instanceof Error ? error.message : "上传失败，请检查浏览器存储空间后重试。" });
     } finally {
       setUploading(false);
     }
@@ -325,7 +345,7 @@ export function CourseResourceManager() {
     if (!confirm(`确认删除资源「${asset.name}」？`)) return;
     setStatusMessage({ type: "info", text: "正在删除课程资源..." });
     try {
-      await deleteCourseAsset(asset);
+      await deleteCourseAsset(asset, session);
       await refreshCourses(asset.courseId);
       window.dispatchEvent(new Event("course-assets-updated"));
       setStatusMessage({ type: "success", text: "资源已删除。" });
@@ -354,6 +374,7 @@ export function CourseResourceManager() {
         <button
           type="button"
           onClick={handleCreateCourse}
+          disabled={saving || uploading}
           className="inline-flex items-center gap-2 rounded-lg bg-[#2386FF] px-4 py-2 text-sm font-medium text-white hover:bg-[#1E76E6]"
         >
           <Plus className="h-4 w-4" />
@@ -404,6 +425,7 @@ export function CourseResourceManager() {
               <button
                 type="button"
                 onClick={handleCreateCourse}
+                disabled={saving || uploading}
                 className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#2386FF] px-4 py-2 text-sm font-medium text-white hover:bg-[#1E76E6]"
               >
                 <Plus className="h-4 w-4" />
@@ -438,6 +460,7 @@ export function CourseResourceManager() {
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#7B8794]">
                           {course.description || "暂无课程简介"}
                         </p>
+                        <p className="mt-2 text-xs text-gray-500">{course.creatorName ?? "归属待确认"} · {courseStatusLabel(course.status, course.publicationScope)} · {courseScopeLabel(course.publicationScope)}</p>
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[#5B6B7B]">
                           <span className="rounded-full bg-white px-2 py-1">
                             课程资源 {course.resources.length}
@@ -464,6 +487,7 @@ export function CourseResourceManager() {
             </div>
           ) : (
             <>
+              <DemoCoursePublication key={selectedCourse.id} course={selectedCourse} session={session} onSaved={() => refreshCourses(selectedCourse.id)} />
               <div className="rounded-xl border border-[#E5EAF0] bg-white p-6">
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -481,7 +505,7 @@ export function CourseResourceManager() {
                     <button
                       type="button"
                       onClick={handleSaveCourse}
-                      disabled={saving}
+                      disabled={saving || !selectedCourse.creatorId}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-[#2386FF] px-3 py-2 text-sm font-medium text-white hover:bg-[#1E76E6] disabled:opacity-60"
                     >
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -496,6 +520,7 @@ export function CourseResourceManager() {
                       课程名称
                     </label>
                     <input
+                      disabled={saving}
                       value={title}
                       onChange={(event) => setTitle(event.target.value)}
                       placeholder="例如：AI小车识人停靠实战"
@@ -508,7 +533,7 @@ export function CourseResourceManager() {
                     </label>
                     <div className="flex h-[38px] items-center gap-2 rounded-lg border border-[#D9E8FF] bg-[#F0F7FF] px-3 text-sm text-[#1E62B8]">
                       <Pencil className="h-4 w-4" />
-                      平台自建课程 · 本地演示
+                      {courseStatusLabel(selectedCourse.status, selectedCourse.publicationScope)}
                     </div>
                   </div>
                 </div>
@@ -637,7 +662,7 @@ export function CourseResourceManager() {
                   <div className="divide-y divide-[#E5EAF0]">
                     {selectedCourse.resources.map((asset) => (
                       <div key={asset.id} className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-center">
-                        <AssetPreview asset={asset} />
+                        <AssetPreview asset={asset} session={session} />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             {getAssetIcon(asset.type)}

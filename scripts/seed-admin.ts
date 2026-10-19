@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "../src/lib/auth/password";
 import { getDatabase, getDatabasePool } from "../src/storage/database/db";
@@ -12,8 +13,8 @@ async function main() {
     throw new Error("BOOTSTRAP_ADMIN_USERNAME is required.");
   }
 
-  if (!password || password.length < 8) {
-    throw new Error("BOOTSTRAP_ADMIN_PASSWORD is required and must be at least 8 characters.");
+  if (!password || password.length < 16 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || /replace|change-me|123456|password/i.test(password)) {
+    throw new Error("BOOTSTRAP_ADMIN_PASSWORD must be a unique non-placeholder password of at least 16 characters containing uppercase, lowercase and digits.");
   }
 
   const db = getDatabase();

@@ -1,6 +1,6 @@
 /**
  * 鉴权工具：优先从 HttpOnly cookie session 提取用户信息。
- * 迁移期可在非生产环境继续兼容 legacy x-user-* header。
+ * 客户端身份 Header 不参与鉴权。
  */
 
 import type { UserRole } from './roles';
@@ -35,17 +35,7 @@ export function getSession(req: Request): SessionUser | null {
     };
   }
 
-  if (!allowLegacyHeaderAuth()) return null;
-
-  const userId = req.headers.get('x-user-id')?.trim();
-  if (!userId) return null;
-  const role = req.headers.get('x-user-role')?.trim() as UserRole | undefined;
-  return {
-    id: userId,
-    role: role ?? ('student' as UserRole),
-    name: req.headers.get('x-user-name')?.trim() || undefined,
-    phone: req.headers.get('x-user-phone')?.trim() || undefined,
-  };
+  return null;
 }
 
 /** 要求特定角色 */
@@ -56,13 +46,6 @@ export function requireRole(user: SessionUser, roles: UserRole | UserRole[]): vo
   }
 }
 
-function allowLegacyHeaderAuth(): boolean {
-  return (
-    process.env.NODE_ENV !== 'production' ||
-    process.env.ALLOW_LEGACY_HEADER_AUTH === 'true'
-  );
-}
-
 function readCookie(req: Request, name: string): string | null {
   const cookieHeader = req.headers.get('cookie');
   if (!cookieHeader) return null;
@@ -71,5 +54,9 @@ function readCookie(req: Request, name: string): string | null {
   const matched = cookies.find((item) => item.startsWith(`${name}=`));
   if (!matched) return null;
 
-  return decodeURIComponent(matched.slice(name.length + 1));
+  try {
+    return decodeURIComponent(matched.slice(name.length + 1));
+  } catch {
+    return null;
+  }
 }

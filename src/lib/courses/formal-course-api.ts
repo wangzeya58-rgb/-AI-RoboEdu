@@ -2,6 +2,21 @@
 
 import { TEACHING_REQUEST_TIMEOUT_MS, type TeachingMessage } from "@/lib/ai-classroom/conversation";
 import type { CourseLearningProgress, ClassCourseLearningProgress } from "./learning-progress";
+import { notifyFormalCoursesChanged } from "./course-refresh";
+import type { FormalCourseMaterial } from "./material-types";
+
+export async function listFormalMaterials(courseId: string, signal?: AbortSignal): Promise<FormalCourseMaterial[]> {
+  return (await request<{ items: FormalCourseMaterial[] }>(`/api/v1/courses/${encodeURIComponent(courseId)}/materials`, { signal })).items;
+}
+
+export async function uploadFormalMaterial(courseId: string, file: File, signal?: AbortSignal): Promise<FormalCourseMaterial> {
+  const body = new FormData(); body.set("file", file);
+  return request<FormalCourseMaterial>(`/api/v1/courses/${encodeURIComponent(courseId)}/materials`, { method: "POST", body, signal });
+}
+
+export async function deleteFormalMaterial(courseId: string, materialId: string) {
+  return request<{ id: string }>(`/api/v1/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(materialId)}`, { method: "DELETE" });
+}
 
 export async function getFormalCourseProgress(courseId: string, signal?: AbortSignal) {
   return progressRequest<CourseLearningProgress>(`/api/v1/courses/${encodeURIComponent(courseId)}/progress`, { signal });
@@ -45,6 +60,11 @@ export interface FormalCourseSummary {
   title: string;
   description: string | null;
   teacherId: string;
+  creatorId?: string;
+  creatorName?: string | null;
+  creatorRole?: "admin" | "teacher" | null;
+  publicationScope?: string;
+  classIds?: string[];
   status: string;
   createdAt: string;
   updatedAt: string | null;
@@ -96,6 +116,30 @@ export async function listFormalCourses(): Promise<FormalCourseSummary[]> {
   return data.items;
 }
 
+export async function listReadableFormalCourses(signal?: AbortSignal): Promise<FormalCourseSummary[]> {
+  return (await request<{ items: FormalCourseSummary[] }>("/api/v1/courses?view=readable", { signal })).items;
+}
+
+export async function listAvailableFormalCourses(): Promise<Array<{ course: FormalCourseSummary; classNames: string[] }>> {
+  return (await request<{ items: Array<{ course: FormalCourseSummary; classNames: string[] }> }>("/api/v1/courses/available")).items;
+}
+
+export async function publishFormalPublicCourse(courseId: string, published: boolean) {
+  return request<FormalCourseSummary>(`/api/v1/courses/${encodeURIComponent(courseId)}/publication`, { method: published ? "POST" : "DELETE" });
+}
+
+export async function confirmFormalCourseOwnership(courseId: string, creatorId: string) {
+  return request<FormalCourseSummary>(`/api/v1/courses/${encodeURIComponent(courseId)}/ownership`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creatorId }),
+  });
+}
+
+export async function unpublishFormalCourseFromClass(courseId: string, classId: string) {
+  return request(`/api/v1/courses/${encodeURIComponent(courseId)}/classes`, {
+    method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ classId }),
+  });
+}
+
 export async function createFormalCourse(input: {
   title: string;
   description?: string;
@@ -107,13 +151,24 @@ export async function createFormalCourse(input: {
   });
 }
 
-export async function getFormalCourse(courseId: string): Promise<FormalCourseSummary> {
-  return request<FormalCourseSummary>(`/api/v1/courses/${encodeURIComponent(courseId)}`);
+export async function getFormalCourse(courseId: string, signal?: AbortSignal): Promise<FormalCourseSummary> {
+  return request<FormalCourseSummary>(`/api/v1/courses/${encodeURIComponent(courseId)}`, { signal });
 }
 
-export async function listFormalLessons(courseId: string): Promise<FormalLessonSummary[]> {
+export async function updateFormalCourse(courseId: string, input: { title: string; description?: string }) {
+  return request<FormalCourseSummary>(`/api/v1/courses/${encodeURIComponent(courseId)}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  });
+}
+
+export async function deleteFormalCourse(courseId: string) {
+  return request<{ id: string }>(`/api/v1/courses/${encodeURIComponent(courseId)}`, { method: "DELETE" });
+}
+
+export async function listFormalLessons(courseId: string, signal?: AbortSignal): Promise<FormalLessonSummary[]> {
   const data = await request<{ items: FormalLessonSummary[] }>(
     `/api/v1/courses/${encodeURIComponent(courseId)}/lessons`,
+    { signal },
   );
   return data.items;
 }
@@ -222,6 +277,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     credentials: "include",
+    cache: "no-store",
   });
   const body = (await response.json().catch(() => null)) as ApiResponse<T> | null;
 
@@ -232,6 +288,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     );
   }
 
+  if (init?.method && init.method !== "GET" && !url.includes("/progress") && !url.endsWith("/ai")) notifyFormalCoursesChanged();
   return body.data;
 }
 

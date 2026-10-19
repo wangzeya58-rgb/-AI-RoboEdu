@@ -4,6 +4,7 @@ import { optional, parseJson, required, string } from "@/lib/api/validation";
 import {
 	createCourseForTeacher,
 	listCoursesForTeacher,
+	listReadableCourses,
 } from "@/lib/courses/server-course-service";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ export const GET = withApi(async (request) => {
 	const user = requireSession(request);
 
 	return {
-		items: await listCoursesForTeacher(user),
+		items: new URL(request.url).searchParams.get("view") === "readable" ? await listReadableCourses(user) : await listCoursesForTeacher(user),
 	};
 }, { methods: ["GET"] });
 

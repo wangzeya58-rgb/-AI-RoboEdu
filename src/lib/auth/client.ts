@@ -1,7 +1,7 @@
 /**
  * 客户端 session 工具
  * - 存于 localStorage 中的用户信息
- * - 调用 API 时附加 x-user-id 头
+ * - 身份认证使用服务端 HttpOnly Cookie，本地信息仅用于界面显示
  */
 "use client";
 
@@ -86,7 +86,7 @@ export async function loginDemoUserWithServerSession(
     body: JSON.stringify({ username, password }),
   }).catch(() => null);
 
-  if (!response) return loginDemoUser(username, password);
+  if (!response) return null;
 
   const body = (await response.json().catch(() => null)) as ApiResponse<SessionInfo> | null;
 
@@ -160,23 +160,17 @@ export function updateSession(updates: Partial<SessionInfo>): SessionInfo | null
 }
 
 export function getAuthHeaders(): Record<string, string> {
-  const session = getSession();
-  return session ? { "x-user-id": session.id } : {};
+  return {};
 }
 
 /**
- * 封装 fetch，自动附加鉴权头
+ * 封装 fetch，使用同源 Cookie Session
  */
 export async function authFetch(
   url: string,
   init: RequestInit = {}
 ): Promise<Response> {
   const headers = new Headers(init.headers || {});
-  const session = getSession();
-  if (session) {
-    headers.set("x-user-id", session.id);
-    headers.set("x-user-role", session.role);
-    headers.set("x-user-name", session.name);
-  }
-  return fetch(url, { ...init, headers });
+  for (const name of ["x-user-id", "x-user-role", "x-user-name", "x-user-phone"]) headers.delete(name);
+  return fetch(url, { ...init, headers, credentials: "same-origin" });
 }

@@ -13,7 +13,7 @@ import {
 } from "../src/lib/ai-classroom/server-ai-classroom-service";
 
 const context: AiLessonContext = {
-  course: { id: "course-1", title: "机器人感知", description: "课堂材料", teacherId: "teacher-1", status: "published", createdAt: "2026-10-15", updatedAt: null },
+  course: { id: "course-1", title: "机器人感知", description: "课堂材料", teacherId: "teacher-1", creatorId: "teacher-1", creatorName: "测试教师", creatorRole: "teacher", publicationScope: "class", status: "published", createdAt: "2026-10-15", updatedAt: null },
   lesson: { id: "lesson-1", courseId: "course-1", title: "雷达测距", content: "雷达通过测量距离感知障碍物。", order: 1, createdAt: "2026-10-15" },
 };
 

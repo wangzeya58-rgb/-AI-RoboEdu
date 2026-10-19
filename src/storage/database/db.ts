@@ -20,6 +20,7 @@ export function getDatabasePool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: databaseUrl,
+      connectionTimeoutMillis: Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS ?? 5000),
       max: Number(process.env.DATABASE_POOL_MAX ?? 10),
       idleTimeoutMillis: Number(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS ?? 30000),
     });

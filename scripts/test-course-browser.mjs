@@ -17,6 +17,7 @@ const password = `Test-${randomUUID()}-1a`;
 const teacher = { username: `${prefix}_teacher`, role: 'teacher' };
 const student = { username: `${prefix}_student`, role: 'student' };
 const outsider = { username: `${prefix}_outsider`, role: 'student' };
+const admin = { username: `${prefix}_admin`, role: 'admin' };
 const createdIds = [];
 const base = 'http://127.0.0.1:5000';
 const before = (await pool.query('select id from courses order by id')).rows.map(row => row.id);
@@ -29,8 +30,8 @@ async function api(path, cookie, body, method) {
   return { data: data.data, cookie: response.headers.get('set-cookie')?.split(';')[0] };
 }
 try {
-  for (const user of [teacher, student, outsider]) {
-    const result = await pool.query('insert into users(username,password_hash,name,role,class_menu_locked) values($1,$2,$3,$4,false) returning id', [user.username, hashPassword(password), 'Phase54 UI Test', user.role]);
+  for (const user of [teacher, student, outsider, admin]) {
+    const result = await pool.query('insert into users(username,password_hash,name,role,class_menu_locked) values($1,$2,$3,$4,false) returning id', [user.username, hashPassword(password), '中文教学测试用户', user.role]);
     createdIds.push(result.rows[0].id);
   }
   const teacherAuth = await api('/api/v1/auth/login', null, { username: teacher.username, password });
@@ -49,6 +50,10 @@ try {
     const message = JSON.parse(data);
     if (message.method === 'Page.loadEventFired' && onPageLoad) { onPageLoad(); onPageLoad = undefined; }
     if (message.method === 'Runtime.exceptionThrown') errors.push(JSON.stringify(message.params.exceptionDetails));
+    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
+      const entry=JSON.stringify(message.params.args);
+      if (/hydration|server rendered|ISO-8859|Cannot update a component/i.test(entry)) errors.push(entry);
+    }
     if (message.id && pending.has(message.id)) {
       const p = pending.get(message.id); pending.delete(message.id);
       if (message.error) p.reject(new Error(JSON.stringify(message.error))); else p.resolve(message.result);
@@ -74,7 +79,10 @@ try {
     for(let n=0;n<160;n++) { if (await evaluate(`!!document.body && (${expression})`)) return; await pause(250); }
     throw new Error(`Timed out: ${expression}\n${await evaluate('document.body.innerText')}`);
   }
-  const click = text => evaluate(`(() => {const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}); if(!b)throw Error('missing button'); b.click()})()`);
+  const click = async text => {
+    await wait(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(text)} && !b.disabled)`);
+    return evaluate(`(() => {const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}); if(!b)throw Error('missing button'); b.click()})()`);
+  };
   const field = (placeholder, value) => evaluate(`(() => {const i=document.querySelector('[placeholder="${placeholder}"]'); Object.getOwnPropertyDescriptor(i.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(i,${JSON.stringify(value)}); i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   async function login(user, path) {
     await evaluate(`(async()=>{const r=await fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:${JSON.stringify(user.username)},password:${JSON.stringify(password)}})});const b=await r.json();if(!b.success)throw Error('login failed');localStorage.setItem('al_session',JSON.stringify(b.data));})()`);
@@ -83,16 +91,33 @@ try {
   await call('Page.enable');
   await call('Runtime.enable');
   await call('Network.enable');
+  await call('Network.clearBrowserCache');
   await call('Network.clearBrowserCookies');
   await call('Emulation.setDeviceMetricsOverride', {width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await navigate('Page.navigate', {url:base+'/login'});
   await wait(`location.pathname==='/login' && !!document.querySelector('input')`);
   await login(teacher, '/course/manage');
-  await wait(`!!document.querySelector('[placeholder="课程名称"]') && document.body.innerText.includes('正式模式')`);
+  await wait(`!!document.querySelector('[placeholder="课程名称"]') && document.body.innerText.includes('正式课程可直接')`);
   await field('课程名称', `${prefix}双章节教学`);
   await field('课程简介（可选）', '第一章雷达测距，第二章平均值；用于教学流程验收。');
   await click('创建课程');
   await wait(`document.body.innerText.includes('已创建课程：')`);
+  const resourceDraft=(await api('/api/v1/courses',teacherAuth.cookie)).data.items.find(item=>item.title===`${prefix}双章节教学`);
+  await navigate('Page.navigate',{url:base+'/teaching-resources'});
+  await wait(`!!document.querySelector('[data-course-id="${resourceDraft.id}"]')`);
+  assert.match(await evaluate(`document.querySelector('[data-course-id="${resourceDraft.id}"]').innerText`),/草稿/);
+  assert.match(await evaluate(`document.querySelector('[data-course-id="${resourceDraft.id}"]').innerText`),/正式数据库课程/);
+  await navigate('Page.reload'); await wait(`!!document.querySelector('[data-course-id="${resourceDraft.id}"]')`);
+  await call('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:-1,uploadThroughput:-1});
+  await evaluate(`document.querySelector('button[aria-label="刷新课程"]').click()`);
+  await wait(`document.querySelector('[role="alert"]')?.innerText.includes('课程读取失败')`);
+  assert.ok(await evaluate(`!!document.querySelector('[aria-label="内置示例课程"]')`));
+  await call('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
+  await click('重试读取课程');
+  await wait(`!!document.querySelector('[data-course-id="${resourceDraft.id}"]')&&!document.querySelector('[role="alert"]')`);
+  await navigate('Page.navigate',{url:base+'/teacher/courses?id='+resourceDraft.id});
+  await wait(`!!document.querySelector('[placeholder="章节标题"]')`);
+  console.log('REAL browser: own empty draft visible in resources after reload; offline error and retry passed.');
   const firstTitle='雷达测距实验';
   const firstBody='学习目标：理解雷达测距。实验步骤：在纸面标记发射和反射信号，解释往返时间与距离的关系。';
   const secondTitle='平均值实验';
@@ -173,9 +198,84 @@ try {
   await call('Emulation.setDeviceMetricsOverride', {width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   console.log('REAL teacher report: completed chapters, percentage and recent study timestamp passed');
   await login(outsider, '/course');
-  await wait(`document.body.innerText.includes('暂无可学习课程')`);
+  await wait(`document.body.innerText.includes('暂无已发布课程')`);
   assert.equal(await evaluate(`!!document.querySelector('input[aria-label="向 AI 小老师提问"]')`),false);
   console.log('REAL browser: non-member has no course or AI panel');
+  await navigate('Page.navigate', {url:base+'/teaching-resources'});
+  await wait(`document.body.innerText.includes('教学资源库')`);
+  assert.equal(await evaluate(`!!document.querySelector('[placeholder="课程名称"]')`), false);
+  assert.ok(!await evaluate(`document.body.innerText.includes('保存课程')`));
+  await evaluate(`(async()=>{await fetch('/api/v1/auth/logout',{method:'POST'});localStorage.removeItem('al_session')})()`);
+  await navigate('Page.navigate', {url:base+'/login'});
+  await click('teacher');
+  assert.equal(await evaluate(`document.querySelector('input').value`),'teacher');
+  await click('admin');
+  assert.equal(await evaluate(`document.querySelector('input').value`),'admin');
+  await field('student / teacher / admin', admin.username);
+  await field('123456', password);
+  await click('登录');
+  await wait(`location.pathname==='/admin' && document.body.innerText.includes('正式数据概览') && !document.body.innerText.includes('正在加载统计')`);
+  await navigate('Page.navigate', {url:base+'/admin/dashboard'});
+  await wait(`document.body.innerText.includes('正式数据概览')`);
+  await navigate('Page.navigate', {url:base+'/admin/courses/new'});
+  await wait(`!!document.querySelector('[placeholder="课程名称"]') && document.body.innerText.includes('全部正式课程')`);
+  await field('课程名称', `${prefix}管理员自建`);
+  await click('创建课程');
+  await wait(`document.body.innerText.includes('已创建课程：')`);
+  const adminCookie=(await api('/api/v1/auth/login', null, {username:admin.username,password})).cookie;
+  const adminCourses=(await api('/api/v1/courses',adminCookie)).data.items;
+  assert.ok(adminCourses.some(item=>item.id===savedCourse.id));
+  assert.ok(adminCourses.some(item=>item.title===`${prefix}管理员自建` && item.creatorId===createdIds[3]));
+  const publicCourse=adminCourses.find(item=>item.title===`${prefix}管理员自建`);
+  await field('章节标题','公共课章节'); await field('章节内容','公共课正文：传感器测距原理。'); await click('添加章节');
+  await wait(`document.body.innerText.includes('章节已添加')`);
+  await click('发布为公共课程'); await wait(`document.body.innerText.includes('取消公共发布')`);
+  await login(teacher,'/teaching-resources');
+  await wait(`!!document.querySelector('[data-course-id="${publicCourse.id}"]')`);
+  assert.match(await evaluate(`document.querySelector('[data-course-id="${publicCourse.id}"]').innerText`),/进入课程/);
+  await navigate('Page.navigate',{url:base+'/course/player?courseId='+publicCourse.id});
+  await wait(`document.body.innerText.includes('课程只读预览')&&document.body.innerText.includes('传感器测距原理')`);
+  assert.ok(!await evaluate(`[...document.querySelectorAll('button')].some(b=>b.textContent.includes('标记本章完成'))`));
+  await click('解释本节重点'); await wait(`document.querySelector('[role=log]')?.textContent.includes('传感器')`);
+  await navigate('Page.reload'); await wait(`document.body.innerText.includes('课程只读预览')`);
+  console.log('REAL browser: teacher public read-only course playback, AI context and reload passed.');
+  await login(admin,'/admin/courses/edit?id='+savedCourse.id);
+  await navigate('Page.navigate',{url:base+'/admin/courses/edit?id='+savedCourse.id});
+  await wait(`document.querySelector('input[aria-label="编辑课程名称"]')?.value===${JSON.stringify(savedCourse.title)}`);
+  await evaluate(`(()=>{const i=document.querySelector('textarea[aria-label="编辑课程简介"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(i,'管理员修改后的简介');i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await click('保存课程信息');
+  await wait(`document.body.innerText.includes('课程信息已保存')`);
+  await navigate('Page.reload');
+  await wait(`document.querySelector('textarea[aria-label="编辑课程简介"]')?.value==='管理员修改后的简介'`);
+  await writeFile('/tmp/roboedu-admin-course-desktop.png', Buffer.from((await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false})).data,'base64'));
+  await call('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:false});
+  await pause(300);
+  assert.ok(await evaluate(`document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth + 1`), 'course management must fit the narrow viewport');
+  await writeFile('/tmp/roboedu-admin-course-mobile.png', Buffer.from((await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false})).data,'base64'));
+  await call('Emulation.setDeviceMetricsOverride', {width:1440,height:1100,deviceScaleFactor:1,mobile:false});
+  await navigate('Page.navigate',{url:base+'/programming/source-code'});
+  await wait(`document.body.innerText.includes('当前时间:') && !document.body.innerText.includes('当前时间: --')`);
+  await click('刷新设备');
+  await wait(`document.body.innerText.includes('已刷新示例设备列表')`);
+  await click('模拟连接');
+  await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('USB有线连接'));b.click()})()`);
+  await wait(`document.body.innerText.includes('模拟已连接（非真实在线）')`);
+  await navigate('Page.reload');
+  await wait(`document.body.innerText.includes('未模拟连接')`);
+  await navigate('Page.navigate',{url:base+'/training'});
+  await wait(`document.body.innerText.includes('开始训练（尚未开放）')`);
+  assert.ok(await evaluate(`[...document.querySelectorAll('button')].filter(b=>b.textContent.includes('尚未开放')).every(b=>b.disabled)`));
+  await evaluate(`(async()=>{await fetch('/api/v1/auth/logout',{method:'POST'});localStorage.removeItem('al_session')})()`);
+  await navigate('Page.navigate',{url:base+'/admin/courses'});
+  await wait(`location.pathname==='/login'`);
+  await evaluate(`(async()=>{const r=await fetch('/api/v1/auth/demo-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'123456'})});const b=await r.json();if(!r.ok)throw Error('Demo login failed');localStorage.setItem('al_session',JSON.stringify(b.data));})()`);
+  await navigate('Page.navigate',{url:base+'/admin'});
+  await wait(`document.body.innerText.includes('Demo 数据概览')`);
+  assert.ok(!await evaluate(`document.body.innerText.includes('214')`));
+  await navigate('Page.navigate',{url:base+'/admin/courses'});
+  await wait(`document.body.innerText.includes('Demo 演示') && document.body.innerText.includes('IndexedDB')`);
+  assert.ok(!await evaluate(`document.body.innerText.includes('全部正式课程')`));
+  console.log('REAL browser: login role buttons, Chinese admin login, legacy dashboard, admin create/edit/reload, student read-only resources, device simulation/refresh, disabled training, logout protection and Demo isolation passed');
   console.log('Runtime exceptions:',errors.length);
   for(const error of errors) console.log(error.slice(0,900));
   if(errors.length) process.exitCode=1;
@@ -184,7 +284,7 @@ try {
   ws?.close();
   if(createdIds.length) {
     await pool.query('delete from classes where teacher_id=$1',[createdIds[0]]);
-    await pool.query('delete from courses where teacher_id=$1',[createdIds[0]]);
+    await pool.query('delete from courses where teacher_id=any($1::uuid[])',[createdIds]);
     await pool.query('delete from users where id=any($1::uuid[])',[createdIds]);
   }
   const after=(await pool.query('select id from courses order by id')).rows.map(row=>row.id);

@@ -1,11 +1,13 @@
 'use client';
 
 import Layout from '@/components/Layout';
-import { Cpu, HardDrive, Play, BookOpen, Download, Settings, Zap, CheckCircle, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { Cpu, HardDrive, Play, BookOpen, Download, Settings, CheckCircle, ArrowRight } from 'lucide-react';
 
 const modules = [
   {
     name: '小车模型部署',
+    href: null,
     desc: '将训练好的AI模型一键部署到RoboMaster小车',
     icon: Download,
     color: '#2386FF',
@@ -14,6 +16,7 @@ const modules = [
   },
   {
     name: '硬件联动调试',
+    href: '/car-control',
     desc: '实时调试小车传感器与执行器联动效果',
     icon: Settings,
     color: '#F59E0B',
@@ -22,6 +25,7 @@ const modules = [
   },
   {
     name: '实景仿真测试',
+    href: '/simulator',
     desc: '在虚拟环境中测试模型性能与鲁棒性',
     icon: Play,
     color: '#10B981',
@@ -30,6 +34,7 @@ const modules = [
   },
   {
     name: '应用案例库',
+    href: null,
     desc: '丰富的AI小车应用案例与最佳实践',
     icon: BookOpen,
     color: '#8B5CF6',
@@ -95,13 +100,16 @@ export default function ApplicationCenterPage() {
                     </div>
                   </div>
                 </div>
-                <button
+                {mod.href ? <Link href={mod.href}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium text-white"
+                  style={{ backgroundColor: mod.color }}
+                >进入模块<ArrowRight className="w-4 h-4" /></Link> : <button disabled
                   className="mt-4 w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all hover:opacity-90"
                   style={{ backgroundColor: mod.color, color: 'white' }}
                 >
-                  进入模块
+                  尚未开放
                   <ArrowRight className="w-4 h-4" />
-                </button>
+                </button>}
               </div>
             );
           })}
@@ -111,7 +119,7 @@ export default function ApplicationCenterPage() {
       {/* 近期部署记录 */}
       <section className="px-12 py-6 border-t" style={{ borderColor: '#E5E7EB' }}>
         <h3 className="text-base font-semibold mb-4" style={{ color: '#151E2B' }}>
-          近期部署记录
+          部署记录（示例数据）
         </h3>
         <div className="space-y-3">
           {recentDeployments.map((deploy, idx) => (
@@ -150,11 +158,11 @@ export default function ApplicationCenterPage() {
                   <CheckCircle className="w-3 h-3" />
                   {deploy.status}
                 </span>
-                <button
+                <button disabled title="部署详情尚未开放"
                   className="px-3 py-1.5 rounded text-xs font-medium transition-all hover:opacity-80"
                   style={{ border: '1px solid #D1D5DB', color: '#374151' }}
                 >
-                  查看详情
+                  查看详情（尚未开放）
                 </button>
               </div>
             </div>

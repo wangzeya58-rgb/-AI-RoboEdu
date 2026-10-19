@@ -8,6 +8,7 @@ import {
   getSceneProgressLabel,
 } from "@/lib/course/course-runtime";
 import SceneRenderer from "./SceneRenderer";
+import { FormalCourseMaterials } from "./FormalCourseMaterials";
 
 interface CourseStageProps {
   lesson: CourseLesson;
@@ -17,6 +18,8 @@ interface CourseStageProps {
   onAnswerQuiz: (sceneId: string, optionId: string) => void;
   onComplete: () => void;
   saving?: boolean;
+  preview?: boolean;
+  formal?: boolean;
 }
 
 export default function CourseStage({
@@ -27,6 +30,8 @@ export default function CourseStage({
   onAnswerQuiz,
   onComplete,
   saving = false,
+  preview = false,
+  formal = false,
 }: CourseStageProps) {
   const currentScene = lesson.scenes[progress.currentSceneIndex];
   const isLastScene = !canGoNext(lesson, progress);
@@ -40,7 +45,7 @@ export default function CourseStage({
           </div>
           <h2 className="mt-1 text-xl font-semibold text-gray-950 [overflow-wrap:anywhere]">{currentScene.title}</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
           <button
             type="button"
             onClick={onPrevious}
@@ -69,11 +74,12 @@ export default function CourseStage({
           onAnswerQuiz={onAnswerQuiz}
         />
       </div>
-      <div className="border-t p-4">
+      {!preview && <div className="border-t p-4">
         <button type="button" onClick={onComplete} disabled={saving || progress.completedSceneIds.includes(currentScene.id)} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white disabled:bg-gray-400">
           <CheckCircle2 className="h-4 w-4" />{saving ? "保存中..." : progress.completedSceneIds.includes(currentScene.id) ? "本章已完成" : "标记本章完成"}
         </button>
-      </div>
+      </div>}
+      {formal && <div className="p-4"><FormalCourseMaterials key={lesson.info.id} courseId={lesson.info.id} /></div>}
     </section>
   );
 }

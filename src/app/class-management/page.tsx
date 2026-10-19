@@ -1,6 +1,6 @@
 "use client";
 import Layout from "@/components/Layout";
-import { Clock, CheckCircle, BookOpen } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
 const tests = [{
     name: "Python基础测验",
@@ -51,6 +51,7 @@ export default function ClassManagementPage() {
                         color: "#151E2B"
                     }}>实训班级管理
                                                 </h2>
+                <p className="mt-2 text-sm text-amber-700">以下测验与培训为示例数据，报名和考核尚未开放。</p>
                 <p
                     className="text-sm mt-1"
                     style={{
@@ -137,14 +138,14 @@ export default function ClassManagementPage() {
                                     className="px-4 py-3 text-sm"
                                     style={{
                                         color: "#6B7280"
-                                    }}>——
+                                    }}>{test.date}（示例）
                                                                     </td>
                                 <td className="px-4 py-3">
                                     <span
                                         className="flex items-center gap-1 text-xs"
                                         style={{
                                             color: "#F59E0B"
-                                        }}>未开始{test.status}
+                                        }}>{test.status}
                                     </span>
                                 </td>
                                 <td className="px-4 py-3">
@@ -153,7 +154,7 @@ export default function ClassManagementPage() {
                                         style={{
                                             backgroundColor: "#2386FF",
                                             color: "white"
-                                        }}>进入测试
+                                        }} disabled>进入测试（尚未开放）
                                                                             </button>
                                 </td>
                             </tr>)}
@@ -231,14 +232,14 @@ export default function ClassManagementPage() {
                                     style={{
                                         backgroundColor: "#2386FF",
                                         color: "white"
-                                    }}>继续学习
+                                    }} disabled>继续学习（尚未开放）
                                                                                             </button>
                             </> : <button
                                 className="px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-gray-50"
                                 style={{
                                     borderColor: "#D1D5DB",
                                     color: "#374151"
-                                }}>立即报名
+                                }} disabled>立即报名（尚未开放）
                                                                                   </button>}
                         </div>
                     </div>)}
@@ -254,7 +255,7 @@ export default function ClassManagementPage() {
                     className="text-xs"
                     style={{
                         color: "#9CA3AF"
-                    }}>班级管理由教务系统同步 | 如有疑问请联系班主任
+                    }}>示例培训数据，尚未接入教务系统。
                                                 </p>
             </footer>
         </Layout>

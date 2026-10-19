@@ -93,12 +93,6 @@ export default function FileList({ category }: FileListProps) {
     return () => clearTimeout(timer);
   }, [category]);
 
-  // 处理下载
-  const handleDownload = (file: FileItem) => {
-    // 模拟下载
-    alert(`正在下载: ${file.name}`);
-  };
-
   // 处理预览
   const handlePreview = (file: FileItem) => {
     setPreviewFile(file);
@@ -127,6 +121,7 @@ export default function FileList({ category }: FileListProps) {
 
   return (
     <>
+      <p className="mb-3 text-sm text-amber-700">示例文件信息，真实文件下载尚未开放。</p>
       <div className="space-y-3">
         {files.map((file) => (
           <div
@@ -172,12 +167,12 @@ export default function FileList({ category }: FileListProps) {
                 预览
               </button>
               <button
-                onClick={() => handleDownload(file)}
+                disabled title="真实文件尚未接入"
                 className="px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1 transition-all hover:opacity-90"
                 style={{ backgroundColor: '#2386FF', color: 'white' }}
               >
                 <Download className="w-3.5 h-3.5" />
-                下载
+                下载（尚未开放）
               </button>
             </div>
           </div>
@@ -233,7 +228,7 @@ export default function FileList({ category }: FileListProps) {
               )}
               <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: '#F9FAFB' }}>
                 <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                  此为文件预览模式，完整内容请下载查看
+                  此为示例文件信息，实际文件内容尚未接入。
                 </p>
               </div>
             </div>
@@ -246,11 +241,11 @@ export default function FileList({ category }: FileListProps) {
                 关闭
               </button>
               <button
-                onClick={() => handleDownload(previewFile)}
+                disabled
                 className="px-4 py-2 rounded-lg text-sm font-medium"
                 style={{ backgroundColor: '#2386FF', color: 'white' }}
               >
-                下载文件
+                下载文件（尚未开放）
               </button>
             </div>
           </div>

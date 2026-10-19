@@ -7,7 +7,6 @@ import FileList from '@/components/programming/FileList';
 import { DeviceConnection } from '@/components/device/DeviceConnection';
 
 export default function SourceCodePage() {
-  const today = new Date().toISOString().split('T')[0];
   
   return (
     <Layout activeMenu="/programming/source-code">
@@ -32,7 +31,7 @@ export default function SourceCodePage() {
       {/* 底部 */}
       <footer className="px-12 py-6 border-t" style={{ borderColor: '#E5E7EB' }}>
         <p className="text-xs" style={{ color: '#9CA3AF' }}>
-          资源持续更新中 | 最后更新：{today}
+          示例资源列表，实际文件及更新时间尚未接入。
         </p>
       </footer>
     </Layout>

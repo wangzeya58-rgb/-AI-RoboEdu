@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import { BookOpen, GraduationCap, Users, UserRoundCheck } from "lucide-react";
-import { getSession, type SessionInfo } from "@/lib/auth/client";
+import type { SessionInfo } from "@/lib/auth/client";
+import { useCurrentSession } from "@/lib/auth/use-current-session";
+import { listFormalCourses } from "@/lib/courses/formal-course-api";
+import { listTeacherCourses } from "@/lib/course/teacher-course-store";
 import { ROLES } from "@/lib/auth/roles";
 import {
   isDemoSessionId,
@@ -27,14 +30,14 @@ const teacherCards = [
   },
   {
     title: "课程管理",
-    desc: "建设课程、上传资源、进入课堂播放。",
-    href: "/course/manage",
+    desc: "建设课程、编辑章节、发布到班级。",
+    href: "/teacher/courses",
     icon: BookOpen,
     color: "#25D366",
   },
   {
     title: "学生管理",
-    desc: "Demo 阶段展示班级学生概览。",
+    desc: "查看班级学生和处理入班申请。",
     href: "/teacher/classes",
     icon: UserRoundCheck,
     color: "#FF8C42",
@@ -42,16 +45,18 @@ const teacherCards = [
 ];
 
 export default function TeacherWorkspacePage() {
-  const [session, setSessionState] = useState<SessionInfo | null>(null);
-  const [classCount, setClassCount] = useState(0);
-  const [approvedStudents, setApprovedStudents] = useState(0);
-  const [pendingApplications, setPendingApplications] = useState(0);
+  const { session } = useCurrentSession();
+  const [classCount, setClassCount] = useState<number | null>(null);
+  const [courseCount, setCourseCount] = useState<number | null>(null);
+  const [approvedStudents, setApprovedStudents] = useState<number | null>(null);
+  const [pendingApplications, setPendingApplications] = useState<number | null>(null);
 
-  const loadOverview = useCallback(async (current: SessionInfo | null) => {
+  const loadOverview = useCallback(async (current: SessionInfo | null, active: () => boolean) => {
+    setClassCount(null);
+    setCourseCount(null);
+    setApprovedStudents(null);
+    setPendingApplications(null);
     if (current?.role !== ROLES.TEACHER) {
-      setClassCount(0);
-      setApprovedStudents(0);
-      setPendingApplications(0);
       return;
     }
 
@@ -60,15 +65,21 @@ export default function TeacherWorkspacePage() {
       setClassCount(classes.length);
       setApprovedStudents(classes.reduce((sum, item) => sum + item.stats.approved, 0));
       setPendingApplications(classes.reduce((sum, item) => sum + item.stats.pending, 0));
+      try {
+        const courses = await listTeacherCourses(current);
+        if (active()) setCourseCount(courses.length);
+      } catch { /* Keep unavailable local storage statistics unknown. */ }
       return;
     }
 
     try {
-      const classes: FormalClassSummary[] = await listFormalClasses();
+      const [classes, courses]: [FormalClassSummary[], Awaited<ReturnType<typeof listFormalCourses>>] = await Promise.all([listFormalClasses(), listFormalCourses()]);
       const memberGroups = await Promise.all(
-        classes.map((item) => listFormalClassMembers(item.id).catch(() => [])),
+        classes.map((item) => listFormalClassMembers(item.id)),
       );
+      if (!active()) return;
       setClassCount(classes.length);
+      setCourseCount(courses.length);
       setApprovedStudents(memberGroups.reduce(
         (sum, members) => sum + members.filter((member) => member.status === "approved").length,
         0,
@@ -77,27 +88,22 @@ export default function TeacherWorkspacePage() {
         (sum, members) => sum + members.filter((member) => member.status === "pending").length,
         0,
       ));
-    } catch {
-      setClassCount(0);
-      setApprovedStudents(0);
-      setPendingApplications(0);
-    }
+    } catch { /* Failed requests must not be presented as zero real records. */ }
   }, []);
 
   useEffect(() => {
+    let generation = 0;
     const refresh = () => {
-      const current = getSession();
-      setSessionState(current);
-      void loadOverview(current);
+      const request = ++generation;
+      void loadOverview(session, () => request === generation);
     };
     refresh();
-    window.addEventListener("al-session-change", refresh);
-    const unsubscribeClassStore = subscribeClassStore(refresh);
+    const unsubscribeClassStore = session && isDemoSessionId(session.id) ? subscribeClassStore(refresh) : () => {};
     return () => {
-      window.removeEventListener("al-session-change", refresh);
+      generation++;
       unsubscribeClassStore();
     };
-  }, [loadOverview]);
+  }, [loadOverview, session]);
 
   return (
     <Layout activeMenu="/teacher">
@@ -110,7 +116,7 @@ export default function TeacherWorkspacePage() {
             </p>
           </div>
           <div className="rounded-lg border border-[#E5EAF0] bg-white px-4 py-3 text-sm text-[#151E2B]">
-            {session?.name ?? "教师 Demo"}
+            {session?.name ?? "正在读取登录状态..."}
           </div>
         </div>
 
@@ -143,10 +149,10 @@ export default function TeacherWorkspacePage() {
           </div>
           <div className="grid gap-3 md:grid-cols-4">
             {[
-              ["班级", String(classCount)],
-              ["课程", "6"],
-              ["学生", String(approvedStudents)],
-              ["待处理", String(pendingApplications)],
+              ["班级", classCount === null ? "未接入" : String(classCount)],
+              ["课程", courseCount === null ? "未接入" : String(courseCount)],
+              ["学生", approvedStudents === null ? "未接入" : String(approvedStudents)],
+              ["待处理", pendingApplications === null ? "未接入" : String(pendingApplications)],
             ].map(([label, value]) => (
               <div key={label} className="rounded-lg bg-[#F5F7F9] p-4">
                 <div className="text-2xl font-bold text-[#151E2B]">{value}</div>

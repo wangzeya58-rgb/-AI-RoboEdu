@@ -32,9 +32,9 @@ WorkingDirectory=/www/wwwroot/edu-platform/backend
 #  这里显式导出 PORT=5000 保证 systemd 下端口可预期。
 Environment=NODE_ENV=production
 Environment=PORT=5000
-Environment=HOSTNAME=127.0.0.1
+Environment=BIND_HOST=127.0.0.1
 #  Supabase / OSS 等密钥按需在此追加（推荐用 EnvironmentFile 引用 .env）
-# EnvironmentFile=/www/wwwroot/edu-platform/backend/.env.production
+EnvironmentFile=/etc/ai-roboedu/production.env
 
 #  pnpm 在 ECS 上需要先 corepack enable；这里走绝对路径
 ExecStart=/usr/bin/pnpm start
@@ -71,7 +71,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/www/wwwroot/edu-platform/backend
+ReadWritePaths=/www/wwwroot/edu-platform/backend /var/lib/ai-roboedu
+StateDirectory=ai-roboedu
 
 [Install]
 WantedBy=multi-user.target

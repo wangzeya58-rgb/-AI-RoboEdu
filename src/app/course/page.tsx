@@ -5,16 +5,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Clock, Settings2, Target } from "lucide-react";
 import Layout from "@/components/Layout";
 import CoursePlayer from "@/components/course/CoursePlayer";
+import { FormalCourseMaterials } from "@/components/course/FormalCourseMaterials";
 import type { CourseLesson } from "@/lib/course/types";
-import { getSession, type SessionInfo } from "@/lib/auth/client";
+import type { SessionInfo } from "@/lib/auth/client";
+import { useCurrentSession } from "@/lib/auth/use-current-session";
+import { listDemoReadableCourses, demoCourseSources, subscribeDemoCourses } from "@/lib/course/teacher-course-store";
+import { subscribeClassStore } from "@/lib/classes/demo-class-store";
+import { courseScopeLabel, courseStatusLabel } from "@/lib/courses/publication";
+import { subscribeFormalCourses } from "@/lib/courses/course-refresh";
+import { toPlayerLesson } from "@/lib/courses/course-player-lesson";
 import {
   FormalClassApiError,
   isDemoSessionId,
-  listFormalStudentMemberships,
 } from "@/lib/classes/formal-class-api";
 import {
   FormalCourseApiError,
-  listFormalClassCourses,
+  listAvailableFormalCourses,
   listFormalLessons,
   listFormalCourseProgress,
   type FormalCourseSummary,
@@ -26,16 +32,11 @@ import { LEARNING_STATUS_LABELS, type CourseLearningProgress } from "@/lib/cours
 interface StudentCourseItem {
   course: FormalCourseSummary;
   classNames: string[];
+  resourceCount?: number;
 }
 
 export default function CoursePage() {
-  const [session, setSession] = useState<SessionInfo | null>(null);
-  const [sessionReady, setSessionReady] = useState(false);
-  useEffect(() => {
-    setSession(getSession());
-    setSessionReady(true);
-  }, []);
-  const useFormalStudentCourses = session?.role === "student" && !isDemoSessionId(session.id);
+  const { session, ready: sessionReady, error: sessionError, retry } = useCurrentSession();
 
   if (!sessionReady) return (
     <Layout activeMenu="/course" className="max-md:[&>aside]:hidden [&>main]:min-w-0">
@@ -43,10 +44,12 @@ export default function CoursePage() {
     </Layout>
   );
 
-  if (useFormalStudentCourses) {
+  if (sessionError) return <Layout activeMenu="/course"><p role="alert" className="p-6">{sessionError} <button onClick={retry}>重试</button></p></Layout>;
+
+  if (session?.role === "student") {
     return (
       <Layout activeMenu="/course" className="max-md:[&>aside]:hidden [&>main]:min-w-0">
-        <FormalStudentCourseCenter />
+        <FormalStudentCourseCenter key={session.id} demoSession={isDemoSessionId(session.id) ? session : undefined} />
       </Layout>
     );
   }
@@ -66,13 +69,13 @@ export default function CoursePage() {
                 第一版课程系统使用本地课程数据，支持顺序播放、AI 老师讲解和课堂互动问题。机器人实验将在后续阶段接入。
               </p>
             </div>
-            <Link
+            {(session?.role === "teacher" || session?.role === "admin") && <Link
               href="/course/manage"
               className="inline-flex items-center gap-2 rounded-lg bg-[#2386FF] px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
             >
               <Settings2 className="h-4 w-4" />
               课程管理
-            </Link>
+            </Link>}
           </div>
         </div>
 
@@ -123,7 +126,7 @@ export default function CoursePage() {
   );
 }
 
-function FormalStudentCourseCenter() {
+function FormalStudentCourseCenter({ demoSession }: { demoSession?: SessionInfo }) {
   const [courses, setCourses] = useState<StudentCourseItem[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [lessons, setLessons] = useState<FormalLessonSummary[]>([]);
@@ -137,6 +140,15 @@ function FormalStudentCourseCenter() {
     setProgressByCourse((current) => ({ ...current, [value.courseId]: value }));
   }, []);
 
+  useEffect(() => {
+    const refresh = () => setRetryToken((value) => value + 1);
+    window.addEventListener("focus", refresh);
+    const timer = selectedCourseId ? undefined : setInterval(refresh, 30000);
+    const unsubscribeCourses = demoSession ? subscribeDemoCourses(refresh) : subscribeFormalCourses(refresh);
+    const unsubscribeClasses = demoSession ? subscribeClassStore(refresh) : () => {};
+    return () => { window.removeEventListener("focus", refresh); clearInterval(timer); unsubscribeCourses(); unsubscribeClasses(); };
+  }, [demoSession, selectedCourseId]);
+
   const selectedCourse = useMemo(
     () => courses.find((item) => item.course.id === selectedCourseId) ?? null,
     [courses, selectedCourseId],
@@ -149,34 +161,11 @@ function FormalStudentCourseCenter() {
       setLoadingCourses(true);
       setError(null);
       try {
-        const memberships = await listFormalStudentMemberships();
-        const approvedMemberships = memberships.filter((item) => item.status === "approved");
-        const classCourseGroups = await Promise.all(
-          approvedMemberships.map(async (membership) => ({
-            className: membership.class.name,
-            courses: await listFormalClassCourses(membership.classId),
-          })),
-        );
-
-        const courseMap = new Map<string, StudentCourseItem>();
-        for (const group of classCourseGroups) {
-          for (const item of group.courses) {
-            const existing = courseMap.get(item.course.id);
-            if (existing) {
-              if (!existing.classNames.includes(group.className)) {
-                existing.classNames.push(group.className);
-              }
-            } else {
-              courseMap.set(item.course.id, {
-                course: item.course,
-                classNames: [group.className],
-              });
-            }
-          }
-        }
-
-        const nextCourses = Array.from(courseMap.values());
-        const savedProgress = await listFormalCourseProgress();
+        const nextCourses: StudentCourseItem[] = demoSession ? (await listDemoReadableCourses(demoSession)).map((course) => ({
+          course: { ...course, teacherId: course.creatorId ?? "", updatedAt: course.updatedAt, status: course.status ?? "draft" },
+          classNames: demoCourseSources(course, demoSession), resourceCount: course.resources.length,
+        })) : await listAvailableFormalCourses();
+        const savedProgress = demoSession ? [] : await listFormalCourseProgress();
         if (!cancelled) {
           setCourses(nextCourses);
           setProgressByCourse(Object.fromEntries(savedProgress.map((value) => [value.courseId, value])));
@@ -187,7 +176,10 @@ function FormalStudentCourseCenter() {
           );
         }
       } catch (loadError) {
-        if (!cancelled) { setCourses([]); setSelectedCourseId(null); setError(formatFormalCourseError(loadError, "课程列表加载失败，请稍后重试。")); }
+        if (!cancelled) {
+          if (loadError instanceof FormalCourseApiError && [401, 403].includes(loadError.status)) { setCourses([]); setSelectedCourseId(null); }
+          setError(formatFormalCourseError(loadError, "课程列表加载失败，请稍后重试。"));
+        }
       } finally {
         if (!cancelled) setLoadingCourses(false);
       }
@@ -198,10 +190,10 @@ function FormalStudentCourseCenter() {
     return () => {
       cancelled = true;
     };
-  }, [retryToken]);
+  }, [retryToken, demoSession]);
 
   useEffect(() => {
-    if (!selectedCourseId) {
+    if (!selectedCourseId || demoSession) {
       setLessons([]);
       return;
     }
@@ -229,28 +221,11 @@ function FormalStudentCourseCenter() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCourseId, retryToken]);
+  }, [selectedCourseId, retryToken, demoSession]);
 
   const playerLesson = useMemo<CourseLesson | null>(() => {
     if (!selectedCourse || loadedCourseId !== selectedCourse.course.id || !lessons.length) return null;
-    return {
-      info: {
-        id: selectedCourse.course.id,
-        title: selectedCourse.course.title,
-        subtitle: selectedCourse.course.description ?? "",
-        level: "班级课程",
-        durationMinutes: 0,
-        objectives: lessons.map((lesson) => lesson.title),
-      },
-      scenes: [...lessons].sort((a, b) => a.order - b.order).map((lesson) => ({
-        id: lesson.id,
-        type: "intro",
-        title: lesson.title,
-        summary: lesson.content.slice(0, 120),
-        content: { heading: lesson.title, paragraphs: [lesson.content], keyPoints: [] },
-        teacher: { name: "AI 小老师", role: "课程学习助手", script: lesson.content },
-      })),
-    };
+    return toPlayerLesson(selectedCourse.course, lessons);
   }, [selectedCourse, loadedCourseId, lessons]);
 
   return (
@@ -264,7 +239,7 @@ function FormalStudentCourseCenter() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">AI RoboEdu 课程中心</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-gray-600">
-              正式模式：这里展示已加入班级发布的课程和章节内容。
+              {demoSession ? "Demo 本地课程：公共课程及已批准加入班级的课程，仅当前浏览器共享。" : "公共课程无需入班；班级课程仅限已批准加入且教师已发布的班级成员。"}
             </p>
           </div>
           <Link
@@ -287,13 +262,13 @@ function FormalStudentCourseCenter() {
       <div className="space-y-6">
         <section className="border-b bg-white">
           <div className="border-b px-5 py-4">
-            <h2 className="text-base font-semibold text-gray-900">班级课程</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-900">公共课程与我的班级课程</h2><button type="button" disabled={loadingCourses} onClick={() => setRetryToken((value) => value + 1)} className="text-sm text-blue-600">刷新课程</button></div>
           </div>
           {loadingCourses ? (
             <div className="p-10 text-center text-sm text-gray-500">正在加载课程...</div>
           ) : courses.length === 0 ? (
             <div className="p-10 text-center text-sm leading-6 text-gray-500">
-              暂无可学习课程。加入班级并等待教师发布课程后会显示在这里。
+              暂无已发布课程。管理员发布公共课程，或入班审批通过且教师发布课程后，会显示在这里。
             </div>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -314,9 +289,11 @@ function FormalStudentCourseCenter() {
                       <p className="mt-1 truncate text-xs text-gray-500">
                         {item.classNames.join("、")}
                       </p>
+                      {demoSession ? <p className="mt-2 text-xs text-gray-600">{item.resourceCount} 个本地课程文件 · {courseScopeLabel(item.course.publicationScope)}</p> : <>
                       <p className="mt-2 text-xs text-gray-600">{LEARNING_STATUS_LABELS[progressByCourse[item.course.id]?.status ?? "not_started"]} · {progressByCourse[item.course.id]?.completedLessons ?? 0}/{progressByCourse[item.course.id]?.totalLessons ?? 0} 章 · {progressByCourse[item.course.id]?.percent ?? 0}%</p>
                       <progress aria-label={`${item.course.title}学习进度`} className="mt-2 h-2 w-full accent-blue-600" max={100} value={progressByCourse[item.course.id]?.percent ?? 0} />
                       <span className="mt-2 block text-xs font-medium text-blue-700">{progressByCourse[item.course.id]?.status === "not_started" || !progressByCourse[item.course.id] ? "开始学习" : "继续学习"}</span>
+                      </>}
                     </div>
                     <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                   </div>
@@ -336,7 +313,7 @@ function FormalStudentCourseCenter() {
               <div>
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                    {selectedCourse.course.status}
+                    {courseStatusLabel(selectedCourse.course.status, selectedCourse.course.publicationScope)}
                   </span>
                   <span className="text-xs text-gray-500">
                     来自：{selectedCourse.classNames.join("、")}
@@ -350,17 +327,18 @@ function FormalStudentCourseCenter() {
                 </p>
               </div>
 
-              {loadingLessons || (loadedCourseId !== selectedCourseId && !error) ? (
+              {demoSession ? <Link href={`/course/player?courseId=${encodeURIComponent(selectedCourse.course.id)}`} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white"><BookOpen className="h-4 w-4" />进入课堂</Link> : loadingLessons || (loadedCourseId !== selectedCourseId && !error) ? (
                 <p className="text-sm text-gray-500">正在加载章节...</p>
               ) : playerLesson ? (
                 <CoursePlayer key={playerLesson.info.id} lesson={playerLesson} formal onProgressChange={updateProgress} />
               ) : (
-                <p className="text-sm text-gray-500">教师尚未添加章节。</p>
+                <div><p className="text-sm text-gray-500">教师尚未添加章节。</p><FormalCourseMaterials key={selectedCourse.course.id} courseId={selectedCourse.course.id} /></div>
               )}
             </div>
           )}
         </section>
       </div>
+      {demoSession && <section className="mt-8 border-t pt-5"><h2 className="mb-3 text-sm font-semibold">内置公开示例课程</h2><div className="flex flex-wrap gap-4">{mockLessons.map((lesson) => <Link key={lesson.info.id} href={`/course/player?courseId=${lesson.info.id}`} className="text-sm text-blue-600">{lesson.info.title}</Link>)}</div></section>}
     </div>
   );
 }

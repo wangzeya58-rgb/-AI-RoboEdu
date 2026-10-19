@@ -29,6 +29,20 @@
       "when": 1792066612078,
       "tag": "0003_pretty_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792319555179,
+      "tag": "0004_course_publication_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792320717227,
+      "tag": "0005_normalize_legacy_publication",
+      "breakpoints": true
     }
   ]
 }

@@ -31,19 +31,6 @@ type StudentMembershipView =
   | { mode: "demo"; member: DemoClassMember; classInfo: DemoClass | null }
   | { mode: "formal"; member: FormalStudentMembership; classInfo: FormalStudentMembership["class"] };
 
-const studentCourses = [
-  {
-    title: "AI 小车视觉识别入门",
-    desc: "认识摄像头、目标检测和课堂示例。",
-    href: "/course/player",
-  },
-  {
-    title: "巡线与传感器实践",
-    desc: "学习传感器采集、路径判断和任务闭环。",
-    href: "/teaching-resources",
-  },
-];
-
 function QuickCard({
   href,
   icon: Icon,
@@ -235,18 +222,7 @@ export default function Home() {
                 <h2 className="text-base font-semibold text-[#151E2B]">我的课程</h2>
                 <BookOpen className="h-4 w-4 text-[#2386FF]" />
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {studentCourses.map((course) => (
-                  <Link
-                    key={course.title}
-                    href={course.href}
-                    className="rounded-lg border border-[#E5EAF0] p-4 hover:border-[#2386FF] hover:bg-[#F8FAFC]"
-                  >
-                    <div className="text-sm font-semibold text-[#151E2B]">{course.title}</div>
-                    <div className="mt-1 text-xs leading-5 text-[#7B8794]">{course.desc}</div>
-                  </Link>
-                ))}
-              </div>
+              <Link href="/course" className="inline-flex items-center gap-2 rounded-lg border border-blue-500 px-4 py-3 text-sm text-blue-600"><BookOpen className="h-4 w-4" />查看公共课程与我的班级课程</Link>
             </div>
           </section>
         )}

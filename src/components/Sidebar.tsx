@@ -44,7 +44,6 @@ const baseMenuItems: MenuItem[] = [
   { name: "控制平台", icon: Gamepad2, href: "/car-control" },
   { name: "仿真器", icon: Monitor, href: "/simulator" },
   { name: "教学资源", icon: BookOpen, href: "/teaching-resources" },
-  { name: "课程管理", icon: Settings2, href: "/course/manage" },
   { name: "我的培训", icon: GraduationCap, href: "/class-management" },
   { name: "AI训练平台", icon: Cpu, href: "/training" },
   { name: "应用中心", icon: AppWindow, href: "/application-center" },
@@ -102,6 +101,10 @@ export default function Sidebar({ activeMenu }: SidebarProps) {
       isPortal: true,
       portalRole: ROLES.TEACHER,
     });
+    portalItems.push(
+      { name: "班级与学生管理", icon: Users, href: "/teacher/classes" },
+      { name: "课程管理", icon: Settings2, href: "/teacher/courses" },
+    );
   } else if (role === ROLES.ADMIN) {
     portalItems.push({
       name: "管理员后台",
@@ -110,6 +113,7 @@ export default function Sidebar({ activeMenu }: SidebarProps) {
       isPortal: true,
       portalRole: ROLES.ADMIN,
     });
+    portalItems.push({ name: "课程管理", icon: Settings2, href: "/admin/courses" });
   }
 
   const menuItems = [...portalItems, ...baseMenuItems];

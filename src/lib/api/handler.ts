@@ -45,6 +45,7 @@ export function withApi<T = unknown, P = Record<string, string>>(
       ...CORS_HEADERS,
       'X-Request-ID': requestId,
       'X-API-Version': version,
+      'Cache-Control': 'private, no-store',
     };
 
     // CORS 预检
@@ -63,7 +64,11 @@ export function withApi<T = unknown, P = Record<string, string>>(
 
     try {
       const data = await handler(req, context);
-      return ok(data, { meta, headers: baseHeaders });
+      if (data instanceof Response) {
+        data.headers.set('X-Request-ID', requestId);
+        return data;
+      }
+      return ok(data, { meta, headers: { ...baseHeaders, 'Cache-Control': 'private, no-store' } });
     } catch (err) {
       // 业务 ApiError
       if (err instanceof ApiError) {
@@ -71,7 +76,7 @@ export function withApi<T = unknown, P = Record<string, string>>(
       }
       // 非业务异常：500
       console.error(`[api:${requestId}]`, req.method, req.url, err);
-      return fail(10500, err instanceof Error ? err.message : '服务器内部错误', {
+      return fail(10500, '服务暂不可用，请联系管理员检查数据库或文件存储。', {
         httpStatus: 500,
         meta,
         headers: baseHeaders,

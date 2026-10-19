@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { Role } from "./roles";
 import { ROLES } from "./roles";
+import { isDemoAuthAllowed } from "./demo-users";
 
 export const AUTH_SESSION_COOKIE = "ai_roboedu_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
@@ -28,7 +29,7 @@ export interface AuthCookieOptions {
 function getSessionSecret(): string {
   const secret = process.env.AUTH_SESSION_SECRET ?? process.env.NEXTAUTH_SECRET;
 
-  if (secret && secret.length >= 32) return secret;
+  if (secret && secret.length >= 32 && (process.env.NODE_ENV !== "production" || !/replace|generate|change-me/i.test(secret))) return secret;
 
   if (process.env.NODE_ENV === "production") {
     throw new Error("AUTH_SESSION_SECRET or NEXTAUTH_SECRET must be set to at least 32 characters in production.");
@@ -100,6 +101,7 @@ export function parseAuthSession(value?: string | null): AuthSessionPayload | nu
 
   const payload = decodePayload(encodedPayload);
   if (!payload || payload.expiresAt <= Date.now()) return null;
+  if (payload.userId.startsWith("demo-") && !isDemoAuthAllowed()) return null;
   return payload;
 }
 

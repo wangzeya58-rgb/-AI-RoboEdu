@@ -2,10 +2,10 @@ import { and, eq, inArray } from "drizzle-orm";
 import { ApiError } from "@/lib/api/errors";
 import type { SessionUser } from "@/lib/api/auth";
 import { isFormalUserId, listClassMembersForTeacher } from "@/lib/classes/server-class-service";
-import { getCourseForUser } from "./server-course-service";
+import { getCourseForUser, listAvailableCourses } from "./server-course-service";
 import { summarizeLearningProgress, type ClassCourseLearningProgress } from "./learning-progress";
 import { getDatabase } from "@/storage/database/db";
-import { classCourses, classMembers, courseLearningProgress, lessonCompletions, lessons } from "@/storage/database/shared/schema";
+import { classCourses, courseLearningProgress, lessonCompletions, lessons } from "@/storage/database/shared/schema";
 
 function assertStudent(user: SessionUser) {
   if (!isFormalUserId(user.id) || user.role !== "student") throw ApiError.forbidden("只有正式学生可以读写自己的学习进度");
@@ -23,9 +23,8 @@ export async function getOwnCourseProgress(user: SessionUser, courseId: string) 
 
 export async function listOwnCourseProgress(user: SessionUser) {
   assertStudent(user);
-  const db = getDatabase();
-  const assigned = await db.selectDistinct({ courseId: classCourses.courseId }).from(classCourses).innerJoin(classMembers, eq(classCourses.classId, classMembers.classId)).where(and(eq(classMembers.userId, user.id), eq(classMembers.status, "approved")));
-  return Promise.all(assigned.map((item) => getOwnCourseProgress(user, item.courseId)));
+  const assigned = await listAvailableCourses(user);
+  return Promise.all(assigned.map((item) => getOwnCourseProgress(user, item.course.id)));
 }
 
 export async function saveOwnCourseProgress(user: SessionUser, courseId: string, lessonId: string, completed = false) {

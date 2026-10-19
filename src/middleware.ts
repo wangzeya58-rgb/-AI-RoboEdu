@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AuthSessionPayload } from "@/lib/auth/server-session";
 import { ROLES, type Role } from "@/lib/auth/roles";
+import { isDemoAuthAllowed } from "@/lib/auth/demo-users";
 
 const AUTH_SESSION_COOKIE = "ai_roboedu_session";
 const PUBLIC_API_PATHS = new Set([
@@ -33,7 +34,7 @@ export async function middleware(request: NextRequest) {
   const session = await parseMiddlewareSession(request.cookies.get(AUTH_SESSION_COOKIE)?.value);
 
   if (pathname === "/login" && session) {
-    return NextResponse.redirect(new URL(getRoleHome(session.role), request.url));
+    return authRedirect(new URL(getRoleHome(session.role), request.url));
   }
 
   if (pathname.startsWith("/api")) {
@@ -52,11 +53,11 @@ function handlePageAuth(request: NextRequest, session: AuthSessionPayload | null
   if (!session) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return authRedirect(loginUrl);
   }
 
   if (!rule.roles.includes(session.role)) {
-    return NextResponse.redirect(new URL(getRoleHome(session.role), request.url));
+    return authRedirect(new URL(getRoleHome(session.role), request.url));
   }
 
   return NextResponse.next();
@@ -104,6 +105,7 @@ async function parseMiddlewareSession(value?: string | null): Promise<AuthSessio
     ) {
       return null;
     }
+    if (payload.userId.startsWith("demo-") && !isDemoAuthAllowed()) return null;
     return payload as AuthSessionPayload;
   } catch {
     return null;
@@ -112,7 +114,7 @@ async function parseMiddlewareSession(value?: string | null): Promise<AuthSessio
 
 function getMiddlewareSecret(): string | null {
   const secret = process.env.AUTH_SESSION_SECRET ?? process.env.NEXTAUTH_SECRET;
-  if (secret && secret.length >= 32) return secret;
+  if (secret && secret.length >= 32 && (process.env.NODE_ENV !== "production" || !/replace|generate|change-me/i.test(secret))) return secret;
   if (process.env.NODE_ENV === "production") return null;
   return "dev-ai-roboedu-session-secret";
 }
@@ -161,8 +163,14 @@ function jsonError(status: number, code: number, message: string) {
       message,
       error: { code, message },
     },
-    { status }
+    { status, headers: { "Cache-Control": "private, no-store" } }
   );
+}
+
+function authRedirect(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 function getRoleHome(role: Role): string {

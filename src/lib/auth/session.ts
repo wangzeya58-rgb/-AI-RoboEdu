@@ -23,18 +23,7 @@ export function getSessionUser(request: NextRequest): SessionUser | null {
     };
   }
 
-  if (!allowLegacyHeaderAuth()) return null;
-
-  const userId = request.headers.get("x-user-id");
-  if (!userId) return null;
-  const role = (request.headers.get("x-user-role") || ROLES.STUDENT) as Role;
-  return {
-    id: userId,
-    username: request.headers.get("x-user-name") || undefined,
-    name: request.headers.get("x-user-name") || "Demo 用户",
-    phone: request.headers.get("x-user-phone") || userId,
-    role,
-  };
+  return null;
 }
 
 export function isAdminOrTeacher(user: SessionUser | null): boolean {
@@ -44,11 +33,4 @@ export function isAdminOrTeacher(user: SessionUser | null): boolean {
 
 export function isAdmin(user: SessionUser | null): boolean {
   return user?.role === ROLES.ADMIN;
-}
-
-function allowLegacyHeaderAuth(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" ||
-    process.env.ALLOW_LEGACY_HEADER_AUTH === "true"
-  );
 }
